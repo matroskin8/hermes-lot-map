@@ -54,3 +54,54 @@ assert.equal(svg.querySelector('[data-lm-key="flight-two"]'), null)
 assert.equal(svg.querySelector('[data-lm-key="return-two"]'), null)
 assert.equal(svg.querySelector('animateMotion'), null)
 console.log('PASS reduced motion removes flights and returns while keeping SVG')
+
+// Each destination pulse owns its leg's arrival and 60-second fade, even as
+// newer destinations are added or an older leg expires on a later redraw.
+const a = { id: 'a', station: 'shell', from: 'core', startedAt: 20000, status: 'ok' }
+const b = { id: 'b', station: 'files', from: 'core', startedAt: 21000, status: 'ok' }
+const c = { id: 'c', station: 'web', from: 'core', startedAt: 22000, status: 'ok' }
+const d = { id: 'd', station: 'web', from: 'core', startedAt: 22500, status: 'ok' }
+const host2 = document.createElement('div')
+updateMap(host2, draw([a, b], 21000))
+const root2 = host2.firstElementChild
+root2.getCurrentTime = () => 1
+const leg1 = root2.querySelector('[data-lm-key="leg-shell-20000-files-21000"]')
+const fade1 = leg1.querySelector('animate[attributeName="opacity"]')
+const tip = root2.querySelector('[data-lm-key="tip-shell-20000-files-21000"] animate[values=".85;0"]')
+assert.equal(fade1.getAttribute('begin'), '0.800s')
+assert.equal(fade1.getAttribute('dur'), '60.000s')
+assert.equal(tip.getAttribute('begin'), '0.800s')
+assert.equal(tip.getAttribute('dur'), '60.000s')
+updateMap(host2, draw([a, b, c], 22000))
+assert.equal(root2.querySelector('[data-lm-key="leg-shell-20000-files-21000"]'), leg1)
+assert.equal(leg1.querySelector('animate[attributeName="opacity"]'), fade1)
+assert.equal(fade1.getAttribute('begin'), '0.800s')
+const leg2 = root2.querySelector('[data-lm-key="leg-files-21000-web-22000"]')
+const fade2 = leg2.querySelector('animate[attributeName="opacity"]')
+assert.equal(Number.parseFloat(fade2.getAttribute('begin')), 1.8)
+assert.equal(fade2.getAttribute('dur'), '60.000s')
+root2.getCurrentTime = () => 1.5
+updateMap(host2, draw([a, b, c, d], 22500))
+assert.equal(root2.querySelector('[data-lm-key="leg-files-21000-web-22000"]'), leg2)
+assert.equal(fade2.getAttribute('begin'), '1.8s')
+root2.getCurrentTime = () => 60.799
+updateMap(host2, draw([a, b, c, d], 81799))
+assert.ok(root2.contains(leg1))
+root2.getCurrentTime = () => 60.8
+updateMap(host2, draw([a, b, c, d], 81800))
+assert.ok(!root2.contains(leg1))
+assert.equal(root2.querySelector('[data-lm-key="leg-files-21000-web-22000"]'), leg2)
+assert.equal(fade2.getAttribute('begin'), '1.8s')
+root2.getCurrentTime = () => 61.8
+updateMap(host2, draw([a, b, c, d], 82800))
+assert.ok(!root2.contains(leg2))
+console.log('PASS independently timed 60s trail/tip fades, stable reconciliation, deduplication and exact expiry')
+const host3 = document.createElement('div')
+updateMap(host3, draw([a, b], 21500, setupFrom({ coreName: 'HERMES', motion: 'reduced' })))
+const stillLeg = host3.querySelector('[data-lm-key="leg-shell-20000-files-21000"]')
+assert.equal(stillLeg.querySelector('animate[attributeName="opacity"]').getAttribute('begin'), '0.300s')
+assert.equal(stillLeg.querySelector('animate[attributeName="opacity"]').getAttribute('dur'), '60.000s')
+assert.equal(stillLeg.querySelector('animate[attributeName="stroke-dashoffset"]'), null)
+assert.equal(host3.querySelector('animateMotion'), null)
+assert.equal(host3.querySelector('[data-lm-key^="tip-"]').getAttribute('opacity'), '.85')
+console.log('PASS reduced motion uses static trail and tip with arrival-timed fade, no flying or drawing')

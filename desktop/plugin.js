@@ -144,8 +144,8 @@ var LotMapOriginal = (() => {
   var SWITCH_MS = 8e3;
   var DONE_MS = 1100;
   var TRAIL_STOPS = 7;
-  var TRAIL_HOLD_MS = 4e4;
-  var TRAIL_FADE_MS = 2e4;
+  var TRAIL_HOLD_MS = PULSE_MS;
+  var TRAIL_FADE_MS = 6e4;
   var turn = (i, shift) => (i + shift) * 2 * Math.PI / STATIONS.length;
   var at = (a, f = 1) => ({ x: CX + RX * f * Math.sin(a), y: CY - RY * f * Math.cos(a) });
   var place = (i, shift) => at(turn(i, shift));
@@ -195,8 +195,7 @@ var LotMapOriginal = (() => {
     for (const e of entries) {
       if (e.from === "agents" || e.station === "model") continue;
       const last = stops[stops.length - 1];
-      if (last !== void 0 && last.station === e.station) last.at = e.startedAt;
-      else stops.push({ station: e.station, at: e.startedAt });
+      if (last === void 0 || last.station !== e.station) stops.push({ station: e.station, at: e.startedAt });
     }
     return stops.slice(-max);
   }
@@ -212,11 +211,12 @@ var LotMapOriginal = (() => {
       const age = now - to.at;
       if (age >= TRAIL_HOLD_MS + TRAIL_FADE_MS) continue;
       const opacity = n1(0.12 + 0.5 * k / (stops.length - 1));
-      const fade = `<animate attributeName="opacity" values="${opacity};0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`;
-      const drawing = isHead && !isStill ? ` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(to.at - now)}" dur=".5s" fill="freeze"/>` : ">";
-      out += `<path d="${path}" fill="none" stroke="${c.trail}" stroke-width="${isHead ? 1.5 : 1.1}" stroke-linecap="round" opacity="${opacity}"${drawing}${fade}</path>`;
+      const fade = `<animate data-lm-key="fade" attributeName="opacity" values="${opacity};0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`;
+      const drawing = isHead && !isStill ? ` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(to.at - now)}" dur=".5s" fill="freeze"/>` : ">";
+      const key = escapeXml(`${from.station}-${from.at}-${to.station}-${to.at}`);
+      out += `<path data-lm-key="leg-${key}" d="${path}" fill="none" stroke="${c.trail}" stroke-width="${isHead ? 1.5 : 1.1}" stroke-linecap="round" opacity="${opacity}"${drawing}${fade}</path>`;
       if (isHead) {
-        out += `<circle cx="${n1(end.x)}" cy="${n1(end.y)}" r="2.4" fill="${c.trail}" opacity="${isStill ? ".85" : "0"}">` + (isStill ? "" : `<animate attributeName="opacity" values="0;.85" begin="${clock(to.at - now + 400)}" dur=".15s" fill="freeze"/>`) + `<animate attributeName="opacity" values=".85;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/></circle>`;
+        out += `<circle data-lm-key="tip-${key}" cx="${n1(end.x)}" cy="${n1(end.y)}" r="2.4" fill="${c.trail}" opacity="${isStill ? ".85" : "0"}">` + (isStill ? "" : `<animate attributeName="opacity" values="0;.85" begin="${clock(to.at - now + 400)}" dur=".15s" fill="freeze"/>`) + `<animate attributeName="opacity" values=".85;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/></circle>`;
       }
     }
     return out;
@@ -248,7 +248,7 @@ var LotMapOriginal = (() => {
       if (!isStill) {
         under += `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.3"><animate attributeName="r" values="${NODE};${NODE + 15}" ${beat}/><animate attributeName="opacity" values=".9;0" ${beat}/></circle>`;
       }
-      const hand = (r, width, lapMs, isOnce) => `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
+      const hand = (r, width, lapMs, isOnce) => `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
       under += hand(NODE + 4, 2.2, 6e4, false) + hand(NODE + 8, 1.2, 6e5, true);
     }
     const lit = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.2"`;
