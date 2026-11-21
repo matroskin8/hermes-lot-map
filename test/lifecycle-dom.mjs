@@ -31,6 +31,17 @@ mod.default.register({ register: c => contributions.push(c), onDispose() {}, onE
 const fire = (type, payload = {}, route = {}) => listeners[type]?.forEach(f => f({ type, payload, session_id: 'a', connectionId: 'host', profile: 'default', ...route }))
 const app = createRoot(document.querySelector('#app'))
 await React.act(() => app.render(contributions.find(c => c.area === 'panes').render()))
+// Simulate overflowing layout: jsdom itself does not calculate scroll dimensions.
+const feed = [...document.querySelectorAll('div')].find(el => el.style.overflowY === 'auto')
+assert.ok(feed, 'activity feed is scrollable')
+let feedHeight = 350
+Object.defineProperty(feed, 'scrollHeight', { configurable: true, get: () => feedHeight })
+feed.scrollTop = 0
+await React.act(() => fire('tool.start', {tool_id:'scroll-test',name:'terminal'}))
+assert.equal(feed.scrollTop, 350, 'new activity follows the bottom')
+feedHeight = 410
+await React.act(() => fire('tool.start', {tool_id:'scroll-test-2',name:'terminal'}))
+assert.equal(feed.scrollTop, 410, 'subsequent activity follows the new bottom')
 await React.act(() => fire('message.delta', {text:'secret-stream'}))
 let entry = mod.__test.board.get().entries.find(e => e.kind === 'model')
 const svg = document.querySelector('svg')
