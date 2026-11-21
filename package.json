@@ -1,0 +1,16 @@
+{
+  "name": "hermes-lot-map-tests",
+  "version": "1.0.0",
+  "description": "A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and using the original renderer from [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.",
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "jsdom": "24.1.3",
+    "nanostores": "0.11.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "private": true
+}

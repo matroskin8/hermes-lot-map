@@ -29,9 +29,15 @@ Missing completions time out after **6 hours (21,600,000 ms)** by default and be
 
 `desktop/map-renderer.js`, `desktop/map-reconcile.js` and `desktop/overlay-engine.js` are the shared sources. Run `node test/build-shared.mjs` to embed them into both self-contained artifacts, and `node test/build-shared.mjs --check` to detect drift. The playground simulates calls; production uses observed gateway events. Elapsed indicators are supported on all ten islands, but only appear for genuinely observed active intervals. Hooks lack a gateway lifecycle; You appears active only on an observed mapped tool.
 
-Run the dependency-free checks with `node test/check-shared-overlay.mjs`, `node test/harness.mjs`, `node test/overlay-clock.mjs`, `node test/orbit-regression.mjs`, `node test/worker-failures.mjs`, and `node test/production-routes.mjs` (the last exercises all ordered worker routes and can take over a minute). DOM and React checks (`test/dom-harness.mjs`, `test/render-harness.mjs`, `test/lifecycle-dom.mjs`) require an existing dependency tree containing jsdom, React, React DOM and nanostores: set `HERMES_DESKTOP_DIR` to its root. No dependency lockfile is provided, so these DOM tests are not fully reproducible from this repository alone.
+With Node.js 20 or newer and npm, install the locked test dependencies and run every check (including DOM, React, and all ordered worker routes) with one command:
 
-A route calculation error is shown in the pane; later map updates can retry. The pre-existing 15-second Worker request deadline remains unchanged. Reduced motion uses non-animated, periodically refreshed elapsed rings and static active markers.
+```sh
+npm ci && npm test
+```
+
+The route sweep can take over a minute. The DOM tests use jsdom and stub browser workers; they do not verify live Desktop event delivery or rendering in a real browser.
+
+A route calculation error is shown in the pane and playground; in the playground it persists through refresh and clears on retry or reset. Later map updates can retry. The pre-existing 15-second Worker request deadline remains unchanged. Reduced motion uses non-animated, periodically refreshed elapsed rings and static active markers.
 
 ## Requirements and installation
 

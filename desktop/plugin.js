@@ -1053,6 +1053,7 @@ function hintOf(args) {
 const nowMs = () => Date.now()
 const newId = () => nowMs().toString(36) + Math.random().toString(36).slice(2, 6)
 const KEEP = 60
+const KEEP_UNKNOWN = 5
 const DEFAULT_LOST_COMPLETION_MS = 6 * 60 * 60 * 1000 // six hours
 const focusEpoch = atom(0)
 
@@ -1085,7 +1086,17 @@ const looksLikeError = (p) => {
   return /"success":\s*false|"error"\s*:|Traceback|command not found|exit_code":\s*[^0]/.test(t.slice(0, 400))
 }
 
-const touch = (fn) => board.set(fn(board.get()))
+let eventBoard = null
+const workingBoard = () => eventBoard ? eventBoard.value : board.get()
+const touch = (fn) => {
+  if (eventBoard) eventBoard.value = fn(eventBoard.value)
+  else board.set(fn(board.get()))
+}
+
+function capUnknown(entries) {
+  let remaining = KEEP_UNKNOWN
+  return entries.slice().reverse().filter(e => e.status !== 'unknown' || remaining-- > 0).reverse()
+}
 
 function beginEntry(toolId, station, label, fromAgent, route, kind = 'tool') {
   touch((b) => ({
@@ -1366,6 +1377,7 @@ export default {
     // A single window-level focused runtime and its complete owner are required.
     const sid = host?.state?.focusedSessionId, owner = host?.state?.focusedSessionOwner
     let focusKey = null
+    const boards = new Map()
     const currentFocus = () => {
       const id = sid?.get?.(), source = owner?.get?.()
       return typeof id === 'string' && id && typeof source?.connectionId === 'string' && source.connectionId && typeof source?.profile === 'string' && source.profile
@@ -1373,7 +1385,7 @@ export default {
     }
     const resetFocus = () => {
       const next = currentFocus()
-      if (next !== focusKey) { focusKey = next; board.set(freshBoard()); focusEpoch.set(focusEpoch.get() + 1) }
+      if (next !== focusKey) { focusKey = next; board.set(next ? (boards.get(next) || freshBoard()) : freshBoard()); focusEpoch.set(focusEpoch.get() + 1) }
     }
     resetFocus()
     for (const a of [sid, owner]) if (typeof a?.subscribe === 'function') ctx.onDispose(a.subscribe(resetFocus))
@@ -1381,17 +1393,30 @@ export default {
       resetFocus()
       if (!focusKey || typeof ev?.session_id !== 'string' || !ev.session_id || typeof ev?.connectionId !== 'string' || !ev.connectionId || typeof ev?.profile !== 'string' || !ev.profile) return null
       const route = JSON.stringify([ev.connectionId, ev.profile, ev.session_id])
-      return route === focusKey ? route : null
+      return route
     }
-    const onFocusedEvent = (type, fn) => ctx.onEvent(type, ev => { if (routeOf(ev)) fn(ev) })
+    const onFocusedEvent = (type, fn) => ctx.onEvent(type, ev => {
+      const route = routeOf(ev)
+      if (!route) return
+      const context = { value: route === focusKey ? board.get() : (boards.get(route) || freshBoard()) }
+      eventBoard = context
+      try { fn(ev) } finally {
+        eventBoard = null
+        boards.set(route, context.value)
+        if (route === focusKey) board.set(context.value)
+      }
+    })
     const configuredTimeout = Number(ctx.storage.get('lostCompletionMs', DEFAULT_LOST_COMPLETION_MS))
     const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout >= 60000 ? configuredTimeout : DEFAULT_LOST_COMPLETION_MS
     ctx.setInterval(() => {
       resetFocus()
       const now = nowMs(); clock.set(now)
-      const b = board.get()
-      if (b.entries.some(e => e.status === 'run' && now - e.t0 >= timeoutMs))
-        board.set({ ...b, entries: b.entries.map(e => e.status === 'run' && now - e.t0 >= timeoutMs ? { ...e, status: 'unknown', t1: now, ms: now - e.t0 } : e) })
+      for (const [route, b] of boards) {
+        if (!b.entries.some(e => e.status === 'run' && now - e.t0 >= timeoutMs)) continue
+        const updated = { ...b, entries: capUnknown(b.entries.map(e => e.status === 'run' && now - e.t0 >= timeoutMs ? { ...e, status: 'unknown', t1: now, ms: now - e.t0 } : e)) }
+        boards.set(route, updated)
+        if (route === focusKey) board.set(updated)
+      }
     }, 250)
 
     const setModel = model => {
@@ -1402,14 +1427,14 @@ export default {
     // observation, not an API request; message.start is a whole turn boundary.
     const observeModel = ev => {
       const route = routeOf(ev)
-      if (!route || board.get().entries.some(e => e.kind === 'model' && e.route === route && e.status === 'run')) return
+      if (!route || workingBoard().entries.some(e => e.kind === 'model' && e.route === route && e.status === 'run')) return
       beginEntry('model', 'model', 'model activity', false, route, 'model')
     }
     const finishModel = ev => endEntry('model', false, null, routeOf(ev), 'model')
     onFocusedEvent('tool.start', (ev) => {
       const p = ev && ev.payload
       if (!p || typeof p.name !== 'string' || !p.name || !p.tool_id || !routeOf(ev)) return
-      if (board.get().entries.some(e => e.kind === 'tool' && e.toolId === p.tool_id && e.route === routeOf(ev) && e.status === 'run')) return
+      if (workingBoard().entries.some(e => e.kind === 'tool' && e.toolId === p.tool_id && e.route === routeOf(ev) && e.status === 'run')) return
       finishModel(ev)
       beginEntry(p.tool_id, classify(p.name), p.name, false, routeOf(ev))
     })
@@ -1443,7 +1468,7 @@ export default {
     onFocusedEvent('subagent.start', ev => {
       const id = ev?.payload?.subagent_id, route = routeOf(ev)
       if (typeof id !== 'string' || !id || !route) return
-      if (board.get().entries.some(e => e.kind === 'subagent' && e.toolId === id && e.route === route && e.status === 'run')) return
+      if (workingBoard().entries.some(e => e.kind === 'subagent' && e.toolId === id && e.route === route && e.status === 'run')) return
       beginEntry(id, 'agents', 'subagent', false, route, 'subagent')
     })
     onFocusedEvent('subagent.complete', ev => {

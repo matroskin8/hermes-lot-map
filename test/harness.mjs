@@ -230,16 +230,50 @@ fire('tool.start', {tool_id:'no-owner',name:'terminal'}, {session_id:'session-b'
 ok(!b().entries.length, 'ambiguous owner fails closed')
 focus.focusedSessionOwner.set({connectionId:'host-a',profile:'default'})
 fire('tool.start', {tool_id:'no-source',name:'terminal'}, {session_id:'session-b',connectionId:undefined})
-ok(!b().entries.length, 'missing source fails closed')
+ok(b().entries.length === 1 && b().entries[0].toolId === 'b', 'missing source fails closed and resolved board is restored')
 fire('tool.start', {tool_id:'long',name:'terminal'}, {session_id:'session-b'})
-let entry=b().entries[0]; const originalNow=Date.now
+let entry=b().entries.find(e => e.toolId === 'long'); const originalNow=Date.now
 Date.now=()=>entry.t0 + 6*60*60*1000-1; timers[0]()
-ok(b().entries[0].status==='run','long active call remains running before six hours')
+ok(b().entries.find(e => e.toolId === 'long').status==='run','long active call remains running before six hours')
 Date.now=()=>entry.t0 + 6*60*60*1000; timers[0]()
-ok(b().entries[0].status==='unknown' && !Object.keys(b().faults).length,'lost completion becomes unknown without fault')
+ok(b().entries.find(e => e.toolId === 'long').status==='unknown' && !Object.keys(b().faults).length,'lost completion becomes unknown without fault')
 fire('tool.complete', {tool_id:'long',name:'terminal'}, {session_id:'session-b'})
-ok(b().entries[0].status==='ok','late completion replaces unknown')
+ok(b().entries.find(e => e.toolId === 'long').status==='ok','late completion replaces unknown')
 Date.now=originalNow
+
+// State is isolated by full route, but retained and updated while unfocused.
+focus.focusedSessionId.set('review-a')
+fire('tool.start', {tool_id:'review-long', name:'terminal'}, {session_id:'review-a'})
+fire('session.info', {model:'review-model'}, {session_id:'review-a'})
+focus.focusedSessionId.set('review-b')
+fire('tool.start', {tool_id:'review-b-call', name:'read_file'}, {session_id:'review-b'})
+fire('tool.complete', {tool_id:'review-long', name:'terminal'}, {session_id:'review-a'})
+ok(!b().entries.some(e => e.toolId === 'review-long') && !b().model, 'inactive event does not leak into focused board')
+focus.focusedSessionId.set('review-a')
+ok(b().model === 'review-model' && b().entries.some(e => e.toolId === 'review-long' && e.status === 'ok'), 'A→B→A restores state with inactive completion')
+focus.focusedSessionId.set('review-b')
+ok(b().entries.some(e => e.toolId === 'review-b-call' && e.status === 'run'), 'B state survives round-trip')
+
+// Six timed-out calls retain at most five unknowns, including completable survivors.
+focus.focusedSessionId.set('review-unknown')
+for (let i=0; i<6; i++) fire('tool.start', {tool_id:`unknown-${i}`, name:'terminal'}, {session_id:'review-unknown'})
+const started = b().entries.at(-1).t0
+Date.now = () => started + 6*60*60*1000
+timers[0]()
+ok(b().entries.filter(e => e.status === 'unknown').length === 5 && !b().entries.some(e => e.toolId === 'unknown-0'), 'exactly five newest unknown observations retained')
+// Timeout cap is independently applied to each complete session route.
+focus.focusedSessionId.set('review-unknown-b')
+for (let i=0; i<7; i++) fire('tool.start', {tool_id:`other-unknown-${i}`, name:'terminal'}, {session_id:'review-unknown-b'})
+const secondStart = b().entries.at(-1).t0
+Date.now = () => secondStart + 6*60*60*1000
+timers[0]()
+ok(b().entries.filter(e => e.status === 'unknown').length === 5 && !b().entries.some(e => e.toolId === 'other-unknown-1'), 'second session independently retains five newest unknowns')
+focus.focusedSessionId.set('review-unknown')
+ok(b().entries.filter(e => e.status === 'unknown').length === 5, 'first session retains its own five unknowns')
+const survivor = b().entries.filter(e => e.status === 'unknown').at(-1)
+fire('tool.complete', {tool_id:survivor.toolId, name:'terminal'}, {session_id:'review-unknown'})
+ok(b().entries.some(e => e.toolId === survivor.toolId && e.status === 'ok'), 'retained unknown accepts late completion')
+Date.now = originalNow
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`)
 process.exit(failures === 0 ? 0 : 1)
