@@ -1209,12 +1209,17 @@ function foldRows(entries) {
 function Feed({ b }) {
   const rows = foldRows(b.entries).slice(-13)
   const feedRef = useRef(null)
+  const followRef = useRef(true)
   useLayoutEffect(() => {
     const feed = feedRef.current
-    if (feed) feed.scrollTop = feed.scrollHeight
+    if (feed && followRef.current) feed.scrollTop = feed.scrollHeight
   }, [b.entries])
   return jsx('div', {
     ref: feedRef,
+    onScroll: (event) => {
+      const feed = event.currentTarget
+      followRef.current = feed.scrollHeight - feed.clientHeight - feed.scrollTop <= 2
+    },
     style: {
       flex: 1, minHeight: 0, overflowY: 'auto', paddingTop: 4,
       fontSize: 11, lineHeight: '17px',

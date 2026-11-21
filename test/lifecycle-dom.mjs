@@ -42,6 +42,17 @@ assert.equal(feed.scrollTop, 350, 'new activity follows the bottom')
 feedHeight = 410
 await React.act(() => fire('tool.start', {tool_id:'scroll-test-2',name:'terminal'}))
 assert.equal(feed.scrollTop, 410, 'subsequent activity follows the new bottom')
+Object.defineProperty(feed, 'clientHeight', { configurable: true, value: 100 })
+feed.scrollTop = 100
+await React.act(() => feed.dispatchEvent(new dom.window.Event('scroll', { bubbles: true })))
+feedHeight = 470
+await React.act(() => fire('tool.start', {tool_id:'scroll-test-3',name:'terminal'}))
+assert.equal(feed.scrollTop, 100, 'reading older activity is not interrupted')
+feed.scrollTop = 370
+await React.act(() => feed.dispatchEvent(new dom.window.Event('scroll', { bubbles: true })))
+feedHeight = 530
+await React.act(() => fire('tool.start', {tool_id:'scroll-test-4',name:'terminal'}))
+assert.equal(feed.scrollTop, 530, 'following resumes after returning to the bottom')
 await React.act(() => fire('message.delta', {text:'secret-stream'}))
 let entry = mod.__test.board.get().entries.find(e => e.kind === 'model')
 const svg = document.querySelector('svg')
