@@ -105,3 +105,37 @@ assert.equal(stillLeg.querySelector('animate[attributeName="stroke-dashoffset"]'
 assert.equal(host3.querySelector('animateMotion'), null)
 assert.equal(host3.querySelector('[data-lm-key^="tip-"]').getAttribute('opacity'), '.85')
 console.log('PASS reduced motion uses static trail and tip with arrival-timed fade, no flying or drawing')
+
+// Active calls, not historical or synthetic entries, own stable satellites.
+const satHost = document.createElement('div')
+const sats = () => [...satHost.querySelectorAll('[data-lm-key^="satellite-"]')]
+const satDraw = (entries, now, opt = setup) => updateMap(satHost, draw(entries, now, opt))
+for (const station of ['you', 'model', 'memory', 'files', 'shell', 'web', 'browser', 'agents', 'skills', 'hooks']) {
+  satDraw([{ ...one, station }], 10000)
+  assert.equal(sats().length, 1, station)
+  assert.equal(sats()[0].getAttribute('data-lm-key'), 'satellite-one')
+}
+satDraw([one], 10000)
+const sat = sats()[0], spin = sat.querySelector('animateTransform')
+const phase = spin.getAttribute('begin')
+satHost.firstElementChild.getCurrentTime = () => .25
+satDraw([one, two], 10250)
+assert.equal(sats().length, 2)
+assert.equal(sats()[0], sat)
+assert.equal(sat.querySelector('animateTransform'), spin)
+assert.equal(spin.getAttribute('begin'), phase)
+satDraw([{ ...one, status: 'ok', endedAt: 10300 }, two], 10300)
+assert.deepEqual(sats().map(n => n.getAttribute('data-lm-key')), ['satellite-two'])
+satDraw([{ ...one, status: 'ok' }, { ...two, status: 'ok' }], 10400)
+assert.equal(sats().length, 0)
+satDraw([{ ...one, station: 'agents' }, { ...two, station: 'agents', satellite: false }], 10000)
+assert.equal(sats().length, 1, 'subagent observation is not a second call')
+const weird = { ...one, id: 'a\"<&', station: 'memory' }
+satDraw([weird, two], 10000, setupFrom({ motion: 'reduced' }))
+assert.deepEqual(sats().map(n => n.getAttribute('data-lm-key')), ['satellite-a"<&', 'satellite-two'])
+assert.equal(satHost.querySelector('[data-lm-key^="satellite-"] animateTransform'), null)
+const many = Array.from({ length: 8 }, (_, i) => ({ ...one, id: `cap-${i}` }))
+satDraw(many, 10000)
+assert.equal(sats().length, 6)
+assert.ok(satHost.textContent.includes('×8'))
+console.log('PASS station satellites, lifecycles, IDs, stability, subagent exclusion, reduced motion and cap')

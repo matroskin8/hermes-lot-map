@@ -14,6 +14,8 @@ export type Entry = {
   startedAt: number
   endedAt?: number
   status: Status
+  /** False for observations that are not active tool calls. */
+  satellite?: boolean
   /** The subagent whose loop made the call; absent for the main loop. */
   agentId?: string
   /** The background task the call started; the row stays open until that task reports back. */

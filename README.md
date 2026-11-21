@@ -7,11 +7,12 @@ A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/h
 ## Features
 
 - Animated pulses for tool starts and completions; markers for failures.
+- Active tool calls orbit their station (static dots with reduced motion). Up to six satellites per station are shown for readability; the ×N badge shows the full active count, including subagent observations. Subagent observations do not add a second satellite for a delegation, and model stream activity is not treated as a call.
 - Station counters and a central context-usage indicator when usage is available.
 - Activity feed with recent calls and durations.
 - A Hermes Desktop side pane and a reduced-motion setting inherited from Panoptes.
 
-The plugin listens to Desktop gateway events; it does not modify tool execution. The SVG drawing is the original lot-map renderer, bundled from the vendored MIT source at commit `5c5833d7380976fda671975d32fcec9c1bc3ef79`; the event bridge and feed are Panoptes-derived, not a feature-complete port.
+The plugin listens to Desktop gateway events; it does not modify tool execution. The SVG drawing is an adapted lot-map renderer, bundled from the vendored MIT source at commit `5c5833d7380976fda671975d32fcec9c1bc3ef79`; the event bridge and feed are Panoptes-derived, not a feature-complete port.
 
 ### Event mapping and gaps
 

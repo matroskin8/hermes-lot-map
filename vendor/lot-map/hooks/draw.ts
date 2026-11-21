@@ -257,7 +257,7 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
   // How many places the ring is turned. The stations keep their order, so the far side of the person is always the network.
   const shift = setup.layout === 'you-bottom' ? STATIONS.length / 2 : 0
   const core: Point = { x: CX, y: CY }
-  const recent = board.entries.slice(-40)
+  const recent = board.entries.filter((e, i) => e.status === 'run' || i >= board.entries.length - 40)
   // With reduced motion nothing flies, spreads or spins. A call still shows: its spoke flashes and fades, its station
   // lights and cools, the route gets its leg; those only change their opacity. The clock hands stay, as slow as a clock's.
   const isStill = setup.motion === 'reduced'
@@ -327,20 +327,26 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
 
   body += drawn.map(d => d.over).join('')
 
-  // Each subagent still at work circles the agents station.
-  const crew = (board.agents ?? []).slice(0, 6)
-  crew.forEach((_, k) => {
-    const lap = 7000
-    const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`
-    // Standing still, each keeps its own place on the circle.
-    if (isStill) {
-      body += `<g transform="rotate(${n1((360 * k) / crew.length)} ${spin})"><circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`
-      return
+  // At most six calls per station: the ×N badge still reports the full total.
+  // Identity-derived phase avoids changing existing orbits when calls start/end.
+  for (const [i, s] of STATIONS.entries()) {
+    const p = place(i, shift)
+    const calls = board.entries.filter(e => e.station === s.id && e.status === 'run' && e.satellite !== false).slice(0, 6)
+    for (const e of calls) {
+      let hash = 0
+      for (const ch of String(e.id)) hash = (Math.imul(hash, 31) + ch.charCodeAt(0)) >>> 0
+      hash = Math.imul(hash ^ (hash >>> 16), 0x7feb352d) >>> 0
+      hash = Math.imul(hash ^ (hash >>> 15), 0x846ca68b) >>> 0
+      hash = (hash ^ (hash >>> 16)) >>> 0
+      const lap = 7000
+      const spin = `${n1(p.x)} ${n1(p.y)}`
+      const dot = `<circle cx="${n1(p.x)}" cy="${n1(p.y - NODE - 6)}" r="3" fill="${s.id === 'memory' ? c.memHot : c.hot}"/>`
+      const key = escapeXml(String(e.id))
+      body += isStill
+        ? `<g data-lm-key="satellite-${key}" transform="rotate(${n1((hash % lap) * 360 / lap)} ${spin})">${dot}</g>`
+        : `<g data-lm-key="satellite-${key}"><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + hash % lap) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${dot}</g>`
     }
-    body +=
-      `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + (k * lap) / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>` +
-      `<circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`
-  })
+  }
 
   // A name longer than three letters shrinks to stay inside the circle.
   const coreSize = Math.min(17, 62 / (0.75 * setup.core.length))

@@ -278,7 +278,7 @@ var LotMapOriginal = (() => {
     const c = { ...setup.theme === "light" ? LIGHT : DARK, ...setup.colors };
     const shift = setup.layout === "you-bottom" ? STATIONS.length / 2 : 0;
     const core = { x: CX, y: CY };
-    const recent = board.entries.slice(-40);
+    const recent = board.entries.filter((e, i) => e.status === "run" || i >= board.entries.length - 40);
     const isStill = setup.motion === "reduced";
     const flights = isStill ? [] : recent.filter((e) => now - e.startedAt < PULSE_MS + RIPPLE_MS).slice(-14);
     const returns = isStill ? [] : recent.filter((e) => e.endedAt !== void 0 && e.from !== "inbound" && now - e.endedAt < PULSE_MS + RIPPLE_MS).slice(-14);
@@ -338,16 +338,23 @@ var LotMapOriginal = (() => {
       body += `<g data-lm-key="return-${escapeXml(String(e.id))}">${pulse(b, a, e.status === "ok" ? c.ash : c.red, now - e.endedAt, 2.6)}</g>`;
     }
     body += drawn.map((d, i) => `<g data-lm-key="over-${i}">${d.over}</g>`).join("");
-    const crew = (board.agents ?? []).slice(0, 6);
-    crew.forEach((_, k) => {
-      const lap = 7e3;
-      const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`;
-      if (isStill) {
-        body += `<g transform="rotate(${n1(360 * k / crew.length)} ${spin})"><circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`;
-        return;
+    // Cap each station at six; the station badge reports the full running count.
+    for (const [i, s] of STATIONS.entries()) {
+      const p = place(i, shift);
+      const calls = board.entries.filter((e) => e.station === s.id && e.status === "run" && e.satellite !== false).slice(0, 6);
+      for (const e of calls) {
+        let hash = 0;
+        for (const ch of String(e.id)) hash = (Math.imul(hash, 31) + ch.charCodeAt(0)) >>> 0;
+        hash = Math.imul(hash ^ (hash >>> 16), 0x7feb352d) >>> 0;
+        hash = Math.imul(hash ^ (hash >>> 15), 0x846ca68b) >>> 0;
+        hash = (hash ^ (hash >>> 16)) >>> 0;
+        const lap = 7000;
+        const spin = `${n1(p.x)} ${n1(p.y)}`;
+        const dot = `<circle cx="${n1(p.x)}" cy="${n1(p.y - NODE - 6)}" r="3" fill="${s.id === "memory" ? c.memHot : c.hot}"/>`;
+        const key = escapeXml(String(e.id));
+        body += isStill ? `<g data-lm-key="satellite-${key}" transform="rotate(${n1((hash % lap) * 360 / lap)} ${spin})">${dot}</g>` : `<g data-lm-key="satellite-${key}"><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + hash % lap) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/>${dot}</g>`;
       }
-      body += `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + k * lap / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/><circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`;
-    });
+    }
     const coreSize = Math.min(17, 62 / (0.75 * setup.core.length));
     const period = anyRunning ? 1600 : 4800;
     const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`;
@@ -1002,7 +1009,7 @@ function beginEntry(toolId, station, label, fromAgent, route, kind = 'tool') {
       id: newId(), toolId, station, label, route, kind,
       status: 'run', t0: nowMs(), t1: 0, ms: 0,
       ...(fromAgent ? { fromAgent: true } : {})
-    }].slice(-KEEP),
+    }].filter((e, i, all) => e.status === 'run' || i >= all.length - KEEP),
     counts: { ...b.counts, [station]: (b.counts[station] || 0) + 1 }
   }))
 }
@@ -1086,14 +1093,13 @@ function updateMap(host, markup) {
 function MapSvg({ b, now, motion }) {
   const entries = b.entries.map(e => ({
     id: e.id, station: e.station, label: '', from: e.fromAgent ? 'agents' : 'core',
-    startedAt: e.t0, endedAt: e.t1 || undefined, status: e.status
+    startedAt: e.t0, endedAt: e.t1 || undefined, status: e.status, satellite: e.kind === 'tool'
   }))
   // A stream chunk is evidence of activity, not a model-call lifecycle.
-  if (b.modelLiveAt && now - b.modelLiveAt < 2000) entries.push({ id: 'model-live-' + b.modelLiveAt, station: 'model', label: '', from: 'core', startedAt: b.modelLiveAt, status: 'run' })
+  if (b.modelLiveAt && now - b.modelLiveAt < 2000) entries.push({ id: 'model-live-' + b.modelLiveAt, station: 'model', label: '', from: 'core', startedAt: b.modelLiveAt, status: 'run', satellite: false })
   if (b.answeredAt) entries.push({ id: 'answer-' + b.answeredAt, station: 'you', label: '', from: 'core', startedAt: b.answeredAt, status: 'ok', mark: 'done' })
   const originalBoard = { entries, counts: b.counts, faults: b.faults,
     ...(b.model ? { model: b.model, switchedAt: b.switchedAt || undefined } : {}),
-    agents: b.entries.filter(e => e.kind === 'subagent' && e.status === 'run'),
     ...(b.ctxPct == null ? {} : { context: b.ctxPct * 100 }) }
   const setup = LotMapSetup.setupFrom({ coreName: 'HERMES', motion: motion ? 'full' : 'reduced' })
   const svg = LotMapOriginal.drawMap(originalBoard, now, setup)

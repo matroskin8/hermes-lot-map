@@ -149,6 +149,23 @@ ok(folded.length === 2 && folded[0].fold === 2, 'foldRows merges consecutive sam
 
 ok(mod.__test.hintOf({ command: 'npm install ' + 'x'.repeat(60) }).length <= 28, 'hintOf truncates long args')
 
+// Real adapter must not count the same delegation observation as another satellite.
+fire('tool.start', { tool_id: 'delegation', name: 'delegate_task' })
+fire('subagent.start', { subagent_id: 'delegated-child' })
+const agentNode = mod.__test.MapSvg({ b: b(), now: Date.now(), motion: true })
+let mapMarkup = ''
+agentNode.p.ref({ ownerDocument: { createElement() { return { set innerHTML(v) { mapMarkup = v }, content: { firstElementChild: {} } } } }, firstElementChild: null, appendChild() {} })
+ok((mapMarkup.match(/data-lm-key="satellite-/g) || []).length === b().entries.filter(e => e.kind === 'tool' && e.status === 'run').length, 'adapter shows calls, not duplicate subagent observations or model streams')
+// Older active calls must survive the history cap and remain completable.
+fire('tool.start', { tool_id: 'long-lived', name: 'terminal' })
+for (let i = 0; i < 65; i++) {
+  fire('tool.start', { tool_id: `short-${i}`, name: 'read_file' })
+  fire('tool.complete', { tool_id: `short-${i}`, name: 'read_file' })
+}
+ok(b().entries.some(e => e.toolId === 'long-lived' && e.status === 'run'), 'active call survives history cap')
+fire('tool.complete', { tool_id: 'long-lived', name: 'terminal' })
+ok(b().entries.some(e => e.toolId === 'long-lived' && e.status === 'ok'), 'old active call remains completable')
+
 // 8. render smoke: render functions build element trees without React
 const tree = pane.render()
 ok(tree && (typeof tree.t === 'function' || typeof tree.t === 'string'), 'pane render() returns an element tree')
