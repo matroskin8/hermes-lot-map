@@ -47,7 +47,7 @@ const pendingRoutes=new Map();
 if(worker){worker.onmessage=e=>{const {key,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};worker.onerror=()=>{for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();worker.terminate();worker=null}};
 function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;if(!worker)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer});worker.postMessage({key,origin,destination});return promise}
 
-const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.append(flights);
+const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
 const active=new Map(), seen=new Set(), routeSequences=new Map(); let dead=false, raf;
 function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false}) {
   if(dead||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
@@ -57,8 +57,8 @@ function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false
     if(f.endedAt && Date.now()-f.endedAt>=800){active.delete(id);onChange();return}
     const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color=destination==='memory'?'#a5e6dc':'#f0c595';
     const path=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5',opacity:'.35'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:color,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});
-    g.append(path,...dots,satellite);flights.append(g);const occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===destination&&!x.pending&&!x.endedAt).map(x=>x.slot));let slot=0;while(occupied.has(slot))slot++;
-    Object.assign(f,{pending:false,g,path,dots,satellite,slot,returning:false});onChange();
+    g.append(path,...dots,satellite);flights.append(g);
+    Object.assign(f,{pending:false,g,path,dots,satellite,slot:null,returning:false});onChange();
   }).catch(error=>{if(dead)return;active.delete(id);onChange(error)});
 }
 function end(id,endedAt=Date.now(),failed=false){const f=active.get(id);if(f&&!f.endedAt){f.endedAt=endedAt;f.failed=failed}}
@@ -67,7 +67,13 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  if(f.endedAt && wall>=f.endedAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';changed=true}
  if(f.returning&&wall-f.endedAt>=800){f.g.remove();active.delete(id);changed=true;continue}
  for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-f.endedAt:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&(f.returning||elapsed<800)?'':'none';const p=f.path.getPointAtLength(travel*f.path.getTotalLength());dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
- if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),radius=Math.min(f.destination==='hermes'?48:30,nearest/2-4.75),angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
+ if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),spacing=9.5,capacity=Math.max(0,Math.floor((outer-9.5)/spacing)+1);
+ // Fixed concentric slots never shift when other calls finish. Overflow waits
+ // invisibly for a slot instead of overlapping another orbit or crossing the cap.
+ if(f.slot===null){const occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!==null&&x.slot!==undefined).map(x=>x.slot));let slot=0;while(slot<capacity&&occupied.has(slot))slot++;if(slot<capacity)f.slot=slot}
+ if(f.slot===null||f.slot>=capacity){f.satellite.style.display='none';continue}
+ const radius=outer-f.slot*spacing,angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle));f.g.dataset.orbitSlot=f.slot}}
+
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
  function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
  return {launch,end,destroy,active,seen,flights};

@@ -78,7 +78,7 @@ const pendingRoutes=new Map();
 if(worker){worker.onmessage=e=>{const {key,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};worker.onerror=()=>{for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();worker.terminate();worker=null}};
 function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;if(!worker)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer});worker.postMessage({key,origin,destination});return promise}
 
-const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.append(flights);
+const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
 const active=new Map(), seen=new Set(), routeSequences=new Map(); let dead=false, raf;
 function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false}) {
   if(dead||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
@@ -88,8 +88,8 @@ function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false
     if(f.endedAt && Date.now()-f.endedAt>=800){active.delete(id);onChange();return}
     const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color=destination==='memory'?'#a5e6dc':'#f0c595';
     const path=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5',opacity:'.35'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:color,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});
-    g.append(path,...dots,satellite);flights.append(g);const occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===destination&&!x.pending&&!x.endedAt).map(x=>x.slot));let slot=0;while(occupied.has(slot))slot++;
-    Object.assign(f,{pending:false,g,path,dots,satellite,slot,returning:false});onChange();
+    g.append(path,...dots,satellite);flights.append(g);
+    Object.assign(f,{pending:false,g,path,dots,satellite,slot:null,returning:false});onChange();
   }).catch(error=>{if(dead)return;active.delete(id);onChange(error)});
 }
 function end(id,endedAt=Date.now(),failed=false){const f=active.get(id);if(f&&!f.endedAt){f.endedAt=endedAt;f.failed=failed}}
@@ -98,7 +98,13 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  if(f.endedAt && wall>=f.endedAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';changed=true}
  if(f.returning&&wall-f.endedAt>=800){f.g.remove();active.delete(id);changed=true;continue}
  for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-f.endedAt:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&(f.returning||elapsed<800)?'':'none';const p=f.path.getPointAtLength(travel*f.path.getTotalLength());dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
- if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),radius=Math.min(f.destination==='hermes'?48:30,nearest/2-4.75),angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
+ if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),spacing=9.5,capacity=Math.max(0,Math.floor((outer-9.5)/spacing)+1);
+ // Fixed concentric slots never shift when other calls finish. Overflow waits
+ // invisibly for a slot instead of overlapping another orbit or crossing the cap.
+ if(f.slot===null){const occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!==null&&x.slot!==undefined).map(x=>x.slot));let slot=0;while(slot<capacity&&occupied.has(slot))slot++;if(slot<capacity)f.slot=slot}
+ if(f.slot===null||f.slot>=capacity){f.satellite.style.display='none';continue}
+ const radius=outer-f.slot*spacing,angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle));f.g.dataset.orbitSlot=f.slot}}
+
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
  function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
  return {launch,end,destroy,active,seen,flights};
@@ -108,6 +114,7 @@ return {create,stations,locations,position,obstacles};
 // END SHARED OVERLAY ENGINE
 
 // Vendored lot-map 5c5833d; MIT, copyright Aleksei Volodin.
+// BEGIN SHARED MAP RENDERER
 var LotMapOriginal = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -346,14 +353,12 @@ var LotMapOriginal = (() => {
       over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${cost}</text>`;
     }
     const corner = NODE * 0.74;
-    if (running.length > 1) {
-      over += `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/><text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">\xD7${running.length}</text>`;
-    }
+    const badge = running.length > 1 ? `<g data-lm-key="badge-${i}"><circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/><text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">\xD7${running.length}</text></g>` : "";
     const faults = board.faults?.[s.id] ?? 0;
     if (faults > 0) {
       over += `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/><text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? "99+" : faults}</text>`;
     }
-    return { under, over };
+    return { under, over, badge };
   }
   function drawMap(board, now, setup) {
     const c = { ...setup.theme === "light" ? LIGHT : DARK, ...setup.colors };
@@ -372,15 +377,6 @@ var LotMapOriginal = (() => {
     for (const [rx, ry] of [[66, 62], [104, 97], [142, 132]]) {
       body += `<ellipse cx="${CX}" cy="${CY}" rx="${rx}" ry="${ry}" fill="none" stroke="${c.line}" stroke-width=".7" opacity=".45" stroke-dasharray="2 5"/>`;
     }
-    STATIONS.forEach((s, i) => {
-      const p = place(i, shift);
-      const a = edge(core, p, HUB);
-      const b = edge(p, core, NODE);
-      const worn = Math.min(1, Math.log2(1 + (board.counts[s.id] ?? 0)) / 7);
-      const line = `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`;
-      body += `${line} stroke="${c.spoke}"/>`;
-      if (worn > 0) body += `${line} stroke="${s.id === "memory" ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`;
-    });
     const scene = { entries: recent, board, now, c, names: setup.t.stations, isStill, shift, spent: setup.contextCost ? board.spent : void 0 };
     const drawn = STATIONS.map((s, i) => station(s, i, scene));
     body += drawn.map((d, i) => `<g data-lm-key="under-${i}">${d.under}</g>`).join("");
@@ -457,6 +453,7 @@ var LotMapOriginal = (() => {
       const leaving = `begin="${clock(done.startedAt - now)}" dur="${clock(DONE_MS)}" fill="freeze"`;
       body += `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="none" stroke="${c.bone}" stroke-width="1.6" opacity="0"><animate attributeName="r" values="${CORE};${CORE + 38}" ${leaving}/><animate attributeName="opacity" values=".6;0" ${leaving}/></circle>`;
     }
+    body += `<g data-lm-key="active-badges">${drawn.map(d => d.badge).join("")}</g>`;
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W * 2}" height="${H * 2}">${setup.theme === "auto" ? lightRules(setup.colors) : ""}${body}</svg>`;
   }
   function escapeXml(text) {
@@ -992,6 +989,8 @@ var LotMapSetup = (() => {
   return __toCommonJS(setup_exports);
 })();
 
+// END SHARED MAP RENDERER
+
 // ── stations ────────────────────────────────────────────────────────────────
 
 const STATIONS = [
@@ -1109,6 +1108,7 @@ function endEntry(toolId, err, ms, route, kind = 'tool') {
 // adapter supplies fixed station names and numeric state, never event text.
 // Reconcile in place: replacing innerHTML destroys the SVG time container and
 // interrupts every SMIL animation on each 250 ms tick or gateway event.
+// BEGIN SHARED MAP RECONCILE
 function updateMap(host, markup) {
   if (!host) return
   const template = host.ownerDocument.createElement('template')
@@ -1152,6 +1152,7 @@ function updateMap(host, markup) {
     }
     let cursor = old.firstChild
     for (const wanted of children) {
+      while (cursor && cursor.nodeType === 1 && cursor.hasAttribute('data-lm-overlay')) cursor = cursor.nextSibling
       const key = wanted.nodeType === 1 && wanted.getAttribute('data-lm-key')
       let match = key ? [...old.childNodes].find(n => n.nodeType === 1 && n.getAttribute('data-lm-key') === key) : cursor
       if (match && (match.nodeType !== wanted.nodeType || match.nodeName !== wanted.nodeName || (!key && match.nodeType === 1 && match.hasAttribute('data-lm-key')))) match = null
@@ -1163,6 +1164,8 @@ function updateMap(host, markup) {
   }
   sync(root, next)
 }
+
+// END SHARED MAP RECONCILE
 
 function MapSvg({ b, now, motion }) {
   const hostRef = useRef(null)
@@ -1186,7 +1189,6 @@ function MapSvg({ b, now, motion }) {
     if (!overlayRef.current) overlayRef.current = LotMapOverlay.create(host.firstElementChild)
     const overlay = overlayRef.current
     for (const e of b.entries) {
-      if (e.kind === 'subagent') continue
       if (e.status !== 'run' && now - e.t1 >= 800) continue
       overlay.launch({id:e.id,origin:e.fromAgent?'agents':'hermes',destination:e.station,startedAt:e.t0,endedAt:e.t1||undefined,failed:e.status==='err'})
       if (e.t1) overlay.end(e.id,e.t1,e.status==='err')
@@ -1397,8 +1399,8 @@ export default {
     })
     ctx.onEvent('subagent.complete', ev => {
       const p = ev?.payload
-      if (!p || typeof p.subagent_id !== 'string' || !['completed', 'failed', 'error', 'timeout', 'interrupted'].includes(p.status)) return
-      endEntry(p.subagent_id, ['failed', 'error', 'timeout', 'interrupted'].includes(p.status), Number.isFinite(p.duration_seconds) ? p.duration_seconds * 1000 : null, routeOf(ev), 'subagent')
+      if (!p || typeof p.subagent_id !== 'string' || !['completed', 'failed', 'error', 'timeout', 'interrupted', 'cancelled', 'canceled'].includes(p.status)) return
+      endEntry(p.subagent_id, ['failed', 'error', 'timeout', 'interrupted', 'cancelled', 'canceled'].includes(p.status), Number.isFinite(p.duration_seconds) ? p.duration_seconds * 1000 : null, routeOf(ev), 'subagent')
     })
 
     ctx.onEvent('status.update', (ev) => {

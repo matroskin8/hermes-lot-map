@@ -7,7 +7,8 @@ A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/h
 ## Features
 
 - Animated pulses for tool starts and completions; markers for failures. Fading station-to-station links show observed start order, not causality or call dependencies. Equal timestamps follow arrival order; different sessions may be mixed.
-- Active tool calls orbit their station (static dots with reduced motion). Up to six satellites per station are shown for readability; the ×N badge shows the full active count, including subagent observations. Subagent observations do not add a second satellite for a delegation, and model stream activity is not treated as a call.
+- Active tool calls orbit their station (static dots with reduced motion). Active identified calls and observed model intervals receive separate overlay satellites; each identified active child receives its own satellite and independently completes. Parent delegations and children may both appear because gateway events do not reliably identify their relationship; no correlation is invented. The ×N badge counts observed entries, not necessarily distinct underlying work.
+- Animated overlay satellites use stable concentric slots, 9.5 SVG units apart (the stroked dot has a 4.75-unit footprint radius). The outer edge stays within half the distance to the nearest island centre. Capacity is finite; extra active calls keep their flight but their satellite waits hidden until a slot is freed. Inner slots may cross the island artwork, and this cap does not guarantee clearance from labels or neighbouring artwork.
 - Station counters and a central context-usage indicator when usage is available.
 - Activity feed with recent calls and durations.
 - A Hermes Desktop side pane and a reduced-motion setting inherited from Panoptes.
@@ -19,8 +20,12 @@ The plugin listens to Desktop gateway events; it does not modify tool execution.
 - `tool.start` / `tool.complete`: file tools → Files; terminal, execute_code, process_manage → Shell; web_search/web_extract → Web; browser_exec/browser_cdp/browser_dialog/browser_vault → Browser; delegate_task and cronjob variants → Agents; memory, hindsight_* and lcm_* → Memory; clarify and todo variants → You; all others, including MCP and skill tools → Skills. The gateway may suppress tool events when tool progress is disabled. Missing IDs/session IDs cannot be correlated and are ignored.
 - `message.delta`, `reasoning.delta`, `thinking.delta`, `tool.generating` start an observed Model activity interval; further chunks do not restart it. A correlated `tool.start` or `message.complete` ends it and draws a return. These are observations, not API request boundaries or call counts; without stream events no model interval is invented. Tool events may be suppressed, and missing terminal events can leave an observation active. `session.info.model` and `session.usage.model` supply the displayed model and switch animation. `message.complete` marks an answer.
 - `session.usage` supplies context_tokens/context_length, total_tokens and api_calls when present; `todo.updated` supplies only the count.
-- `subagent.start` and terminal-status `subagent.complete` show a child at Agents when both have the same subagent_id and route; older events without identity or status are omitted. Child goals, text, tool previews and results are not retained. Other child events are not mapped because they do not provide a matching tool lifecycle.
+- `subagent.start` and terminal-status `subagent.complete` (including canceled/cancelled) show a child at Agents when both have the same subagent_id and route; older events without identity or status are omitted. Child goals, text, tool previews and results are not retained. Other child events are not mapped because they do not provide a matching tool lifecycle.
 - Hooks remain inactive: the inspected Desktop gateway event contract exposes no hook-execution event. No hook activity is inferred from unrelated events.
+
+## Building and testing
+
+`desktop/map-renderer.js`, `desktop/map-reconcile.js` and `desktop/overlay-engine.js` are the shared sources. Run `node test/build-shared.mjs` to embed them into both self-contained artifacts, and `node test/build-shared.mjs --check` to detect drift. The playground simulates calls; production uses observed gateway events. Elapsed indicators are supported on all ten islands, but only appear for genuinely observed active intervals. Hooks lack a gateway lifecycle; You appears active only on an observed mapped tool.
 
 ## Requirements and installation
 
