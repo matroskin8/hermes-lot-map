@@ -113,7 +113,13 @@ fire('session.info', { model: 'provider/model-one', system_prompt: 'private-prom
 ok(b().model === 'provider/model-one', 'session.info supplies model')
 fire('session.usage', { model: 'provider/model-two', total_tokens: 123, api_calls: 2 })
 ok(b().model === 'provider/model-two' && b().tokens === 123 && b().calls === 2, 'usage updates model and totals without context length')
-const modelSvg = mod.__test.MapSvg({ b: b(), now: Date.now(), motion: true }).p.dangerouslySetInnerHTML.__html
+const svgFor = b => {
+  let html = ''
+  const host = { ownerDocument: { createElement: () => ({ set innerHTML(value) { html = value }, content: { firstElementChild: {} } }) }, firstElementChild: null, appendChild: () => {} }
+  mod.__test.MapSvg({ b, now: Date.now(), motion: true }).p.ref(host)
+  return html
+}
+const modelSvg = svgFor(b())
 ok(modelSvg.includes('provider/model-two'), 'model name reaches original SVG renderer')
 fire('subagent.start', { subagent_id: 'child-1', goal: 'private-goal' })
 fire('subagent.start', { subagent_id: 'child-2' })
@@ -160,7 +166,7 @@ fire('tool.start', { tool_id: 'visual-error', name: 'read_file' })
 fire('tool.complete', { tool_id: 'visual-error', name: 'read_file', result: { success: false } })
 const rendered = elements(tree)
 const map = rendered.find(x => x.p?.['aria-label'] === 'Hermes activity map')
-const svg = map?.p?.dangerouslySetInnerHTML?.__html || ''
+const svg = svgFor(b())
 ok(!!map && svg.includes('<svg'), 'accessible original SVG renders')
 ok(svg.includes('viewBox="0 0 460 430"') && svg.includes('HERMES'), 'original dimensions and hub rendered')
 ok(svg.includes('75%'), 'usage event renders context percentage')

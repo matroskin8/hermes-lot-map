@@ -64,9 +64,9 @@ try {
   const html = RDS.renderToStaticMarkup(pane.render())
   console.log('RENDER OK — length', html.length)
   const checks = [
-    ['station label YOU', html.includes('>You</text>')],
-    ['station label BROWSER', html.includes('>Browser</text>')],
-    ['svg present', html.includes('<svg')],
+
+    // The SVG is mounted by a ref in the browser, not during server rendering.
+    ['accessible map host present', html.includes('aria-label="Hermes activity map"')],
     ['feed row', html.includes('terminal')],
     ['status text not retained', !html.includes('Running: web_search')],
     ['task count', html.includes('tasks: 3')]

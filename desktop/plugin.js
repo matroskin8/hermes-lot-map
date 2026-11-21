@@ -302,36 +302,42 @@ var LotMapOriginal = (() => {
     });
     const scene = { entries: recent, board, now, c, names: setup.t.stations, isStill, shift, spent: setup.contextCost ? board.spent : void 0 };
     const drawn = STATIONS.map((s, i) => station(s, i, scene));
-    body += drawn.map((d) => d.under).join("");
-    body += trail(recent, now, c, isStill, shift);
+    body += drawn.map((d, i) => `<g data-lm-key="under-${i}">${d.under}</g>`).join("");
+    body += `<g data-lm-key="trail">${trail(recent, now, c, isStill, shift)}</g>`;
     const ends = (e) => {
       const p = place(indexOf(e.station), shift);
       const start = e.from === "agents" ? agentsAt : core;
       return [edge(start, p, e.from === "agents" ? NODE : HUB), edge(p, start, NODE)];
     };
-    const lane = (list, e) => {
-      const peers = list.filter((x) => x.station === e.station && x.from === e.from);
-      return (peers.indexOf(e) - (peers.length - 1) / 2) * 5;
+    const lane = (e, returning) => {
+      const time = returning ? e.endedAt : e.startedAt;
+      const peers = recent.filter((x) => x !== e && x.station === e.station && x.from === e.from &&
+        (returning ? x.endedAt !== void 0 && x.endedAt <= time : x.startedAt <= time) &&
+        time - (returning ? x.endedAt : x.startedAt) < PULSE_MS + RIPPLE_MS);
+      const n = peers.filter(x => (returning ? x.endedAt : x.startedAt) < time || recent.indexOf(x) < recent.indexOf(e)).length;
+      return n === 0 ? 0 : Math.ceil(n / 2) * (n % 2 ? 5 : -5);
     };
     for (const e of beams) {
       const [a, b] = ends(e);
-      body += beam(a, b, isBad(e) ? c.red : tone(e)[0], now - e.startedAt, e.from === "inbound");
+      body += `<g data-lm-key="beam-${escapeXml(String(e.id))}">${beam(a, b, isBad(e) ? c.red : tone(e)[0], now - e.startedAt, e.from === "inbound")}</g>`;
     }
     for (const e of flights) {
-      const [a, b] = aside(...ends(e), lane(flights, e));
+      const [a, b] = aside(...ends(e), lane(e, false));
       const age = now - e.startedAt;
       const color = e.status === "block" ? c.red : tone(e)[1];
+      body += `<g data-lm-key="flight-${escapeXml(String(e.id))}">`;
       if (e.from === "inbound") {
         body += pulse(b, a, color, age, 3.8, true) + ripple(core, HUB - 2, color, age);
       } else {
         body += pulse(a, b, color, age, 3.8) + ripple(place(indexOf(e.station), shift), NODE, color, age);
       }
+      body += `</g>`;
     }
     for (const e of returns) {
-      const [a, b] = aside(...ends(e), lane(returns, e));
-      body += pulse(b, a, e.status === "ok" ? c.ash : c.red, now - e.endedAt, 2.6);
+      const [a, b] = aside(...ends(e), lane(e, true));
+      body += `<g data-lm-key="return-${escapeXml(String(e.id))}">${pulse(b, a, e.status === "ok" ? c.ash : c.red, now - e.endedAt, 2.6)}</g>`;
     }
-    body += drawn.map((d) => d.over).join("");
+    body += drawn.map((d, i) => `<g data-lm-key="over-${i}">${d.over}</g>`).join("");
     const crew = (board.agents ?? []).slice(0, 6);
     crew.forEach((_, k) => {
       const lap = 7e3;
@@ -1021,14 +1027,70 @@ function endEntry(toolId, err, ms, route, kind = 'tool') {
 
 // The SVG is generated exclusively by the vendored lot-map renderer. The
 // adapter supplies fixed station names and numeric state, never event text.
+// Reconcile in place: replacing innerHTML destroys the SVG time container and
+// interrupts every SMIL animation on each 250 ms tick or gateway event.
+function updateMap(host, markup) {
+  if (!host) return
+  const template = host.ownerDocument.createElement('template')
+  template.innerHTML = markup
+  const next = template.content.firstElementChild
+  if (!host.firstElementChild) { host.appendChild(next); return }
+  const root = host.firstElementChild
+  const offset = typeof root.getCurrentTime === 'function' ? root.getCurrentTime() : 0
+  const prepare = node => {
+    if (node.nodeType !== 1) return
+    for (const animation of [node, ...node.querySelectorAll('[begin]')]) {
+      const begin = animation.getAttribute('begin')
+      if (begin && /^-?\d+(?:\.\d+)?s$/.test(begin)) animation.setAttribute('begin', `${parseFloat(begin) + offset}s`)
+    }
+  }
+  const sync = (old, fresh) => {
+    if (old.nodeType === 3) { if (old.nodeValue !== fresh.nodeValue) old.nodeValue = fresh.nodeValue; return }
+    const animation = /^(animate|animateMotion|animateTransform)$/.test(old.localName)
+    for (const attr of [...old.attributes]) if (!fresh.hasAttribute(attr.name)) old.removeAttribute(attr.name)
+    for (const attr of [...fresh.attributes]) {
+      // Generated begin values are relative to now; existing values are on
+      // the SVG clock. Keep their phase unless a genuinely new event changed it.
+      if (animation && attr.name === 'begin' && /^-?\d+(?:\.\d+)?s$/.test(attr.value)) {
+        const desired = parseFloat(attr.value) + offset
+        const previous = parseFloat(old.getAttribute('begin'))
+        const repeating = fresh.getAttribute('repeatCount') === 'indefinite'
+        const period = repeating ? parseFloat(fresh.getAttribute('dur')) : 0
+        const difference = desired - previous
+        const phaseDifference = period ? difference - Math.round(difference / period) * period : difference
+        if (!Number.isFinite(previous) || Math.abs(phaseDifference) > 0.1) old.setAttribute('begin', `${desired}s`)
+        continue
+      }
+      if (old.getAttribute(attr.name) !== attr.value) old.setAttribute(attr.name, attr.value)
+    }
+    const children = [...fresh.childNodes]
+    const keys = new Set(children.map(n => n.nodeType === 1 && n.getAttribute('data-lm-key')).filter(Boolean))
+    for (const child of [...old.childNodes]) {
+      const key = child.nodeType === 1 && child.getAttribute('data-lm-key')
+      if (key && !keys.has(key)) child.remove()
+    }
+    let cursor = old.firstChild
+    for (const wanted of children) {
+      const key = wanted.nodeType === 1 && wanted.getAttribute('data-lm-key')
+      let match = key ? [...old.childNodes].find(n => n.nodeType === 1 && n.getAttribute('data-lm-key') === key) : cursor
+      if (match && (match.nodeType !== wanted.nodeType || match.nodeName !== wanted.nodeName || (!key && match.nodeType === 1 && match.hasAttribute('data-lm-key')))) match = null
+      if (!match) { match = wanted.cloneNode(true); prepare(match); old.insertBefore(match, cursor) }
+      else { if (match !== cursor) old.insertBefore(match, cursor); sync(match, wanted) }
+      cursor = match.nextSibling
+    }
+    while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next }
+  }
+  sync(root, next)
+}
+
 function MapSvg({ b, now, motion }) {
   const entries = b.entries.map(e => ({
     id: e.id, station: e.station, label: '', from: e.fromAgent ? 'agents' : 'core',
     startedAt: e.t0, endedAt: e.t1 || undefined, status: e.status
   }))
   // A stream chunk is evidence of activity, not a model-call lifecycle.
-  if (b.modelLiveAt && now - b.modelLiveAt < 2000) entries.push({ id: 'model-live', station: 'model', label: '', from: 'core', startedAt: b.modelLiveAt, status: 'run' })
-  if (b.answeredAt) entries.push({ id: 'answer', station: 'you', label: '', from: 'core', startedAt: b.answeredAt, status: 'ok', mark: 'done' })
+  if (b.modelLiveAt && now - b.modelLiveAt < 2000) entries.push({ id: 'model-live-' + b.modelLiveAt, station: 'model', label: '', from: 'core', startedAt: b.modelLiveAt, status: 'run' })
+  if (b.answeredAt) entries.push({ id: 'answer-' + b.answeredAt, station: 'you', label: '', from: 'core', startedAt: b.answeredAt, status: 'ok', mark: 'done' })
   const originalBoard = { entries, counts: b.counts, faults: b.faults,
     ...(b.model ? { model: b.model, switchedAt: b.switchedAt || undefined } : {}),
     agents: b.entries.filter(e => e.kind === 'subagent' && e.status === 'run'),
@@ -1037,7 +1099,7 @@ function MapSvg({ b, now, motion }) {
   const svg = LotMapOriginal.drawMap(originalBoard, now, setup)
   return jsx('div', { className: 'lm-original', role: 'img', 'aria-label': 'Hermes activity map',
     style: { width: '100%', flex: 'none', lineHeight: 0 },
-    dangerouslySetInnerHTML: { __html: svg } })
+    ref: host => updateMap(host, svg) })
 }
 
 const fmtMs = (ms) => ms == null ? '-' : ms < 1000 ? Math.max(0, Math.round(ms)) + ' ms' : (ms / 1000).toFixed(1) + ' s'
@@ -1169,7 +1231,7 @@ function Chip() {
 
 // ── plugin ──────────────────────────────────────────────────────────────────
 
-export const __test = { board, classify, foldRows, hintOf, MapSvg }
+export const __test = { board, classify, foldRows, hintOf, MapSvg, updateMap, drawMap: LotMapOriginal.drawMap, setupFrom: LotMapSetup.setupFrom }
 
 export default {
   id: 'hermes-lot-map',
