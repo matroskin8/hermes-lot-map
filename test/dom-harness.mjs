@@ -55,53 +55,18 @@ assert.equal(svg.querySelector('[data-lm-key="return-two"]'), null)
 assert.equal(svg.querySelector('animateMotion'), null)
 console.log('PASS reduced motion removes flights and returns while keeping SVG')
 
-// Chronological links represent observed order, not dependency; pulse remains real Hermes traffic.
-const a = { id: 'a', station: 'shell', from: 'core', startedAt: 20000, status: 'ok' }
-const b = { id: 'b', station: 'memory', from: 'core', startedAt: 21000, status: 'ok' }
-const host2 = document.createElement('div')
-updateMap(host2, draw([a, b], 21000))
-const root2 = host2.firstElementChild
-root2.getCurrentTime = () => 1
-const leg2 = root2.querySelector('[data-lm-key="leg-a-b"]')
-assert.ok(leg2)
-const path = leg2.getAttribute('d')
-assert.match(path, /^M[\d. -]+(?: L[\d. -]+){2,}$/)
-const points = path.match(/-?\d+(?:\.\d+)?/g).map(Number)
-for (const [idx, p] of [[4, points.slice(0,2)], [2, points.slice(-2)]]) {
-  const circle = root2.querySelector(`[data-lm-key="over-${idx}"] circle`)
-  assert.ok(Math.hypot(p[0]-Number(circle.getAttribute('cx')), p[1]-Number(circle.getAttribute('cy'))) < 35)
+// Independent observed events must never invent station-to-station chronology.
+const independent = [
+  { id: 'web-files', station: 'files', from: 'core', startedAt: 20000, status: 'ok' },
+  { id: 'web-agents', station: 'agents', from: 'core', startedAt: 21000, status: 'ok' },
+]
+for (const motion of ['full', 'reduced']) {
+  const h = document.createElement('div')
+  updateMap(h, draw(independent, 21000, setupFrom({ motion })))
+  assert.equal(h.querySelector('[data-lm-key="trail"]'), null)
+  assert.equal(h.querySelectorAll('[data-lm-key^="leg-"]').length, 0)
 }
-assert.notEqual(path, root2.querySelector('[data-lm-key="flight-b"] animateMotion').getAttribute('path'))
-assert.equal(leg2.querySelector('animate').getAttribute('dur'), '60.000s')
-root2.getCurrentTime = () => 60.8
-updateMap(host2, draw([a, b], 81800))
-assert.equal(root2.querySelector('[data-lm-key="leg-a-b"]'), null)
-const host3 = document.createElement('div')
-updateMap(host3, draw([a, b], 21500, setupFrom({ motion: 'reduced' })))
-assert.ok(host3.querySelector('[data-lm-key="leg-a-b"] animate[attributeName="opacity"]'))
-assert.equal(host3.querySelector('animateMotion'), null)
-console.log('PASS chronological trail, actual pulse, fade and reduced motion')
-
-// Stable input order breaks simultaneous ties; all real stations participate.
-const allStations = ['you', 'model', 'memory', 'files', 'shell', 'web', 'browser', 'agents', 'skills', 'hooks']
-const simultaneous = allStations.map((station, i) => ({ id: `order${i}`, station, from: i === 7 ? 'agents' : 'core', startedAt: 30000, status: 'ok' }))
-const chainHost = document.createElement('div')
-updateMap(chainHost, draw(simultaneous, 30000))
-for (let i = 1; i < simultaneous.length; i++) assert.ok(chainHost.querySelector(`[data-lm-key="leg-order${i-1}-order${i}"]`))
-assert.equal(chainHost.querySelectorAll('[data-lm-key^="leg-"]').length, 9)
-// Input may arrive out of order; timestamp order prevails.
-const sortedHost = document.createElement('div')
-updateMap(sortedHost, draw([b, a], 21000))
-assert.ok(sortedHost.querySelector('[data-lm-key="leg-a-b"]'))
-const c = { id: 'c', station: 'model', from: 'core', startedAt: 22000, status: 'ok' }
-const fadeHost = document.createElement('div')
-updateMap(fadeHost, draw([a, b, c], 22000))
-assert.equal(fadeHost.querySelector('[data-lm-key="leg-a-b"] animate').getAttribute('begin'), '-0.200s')
-assert.equal(fadeHost.querySelector('[data-lm-key="leg-b-c"] animate').getAttribute('begin'), '0.800s')
-updateMap(fadeHost, draw([a, b, c], 81800))
-assert.equal(fadeHost.querySelector('[data-lm-key="leg-a-b"]'), null)
-assert.ok(fadeHost.querySelector('[data-lm-key="leg-b-c"]'))
-console.log('PASS complete real-event chain, stable simultaneous ordering, timestamp sort and staggered fade')
+console.log('PASS independent events produce no chronological station links')
 
 // All islands use actual ongoing entries, oldest start, and remove both clocks
 // upon completion. Inspect the mounted SVG rather than source text.

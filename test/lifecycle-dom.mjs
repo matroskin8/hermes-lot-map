@@ -56,12 +56,39 @@ const child = mod.__test.board.get().entries.find(e => e.kind === 'subagent' && 
 assert.ok(svg.querySelector(`[data-flight="${delegate.id}"]`))
 assert.ok(svg.querySelector(`[data-flight="${child.id}"]`))
 assert.equal(svg.querySelectorAll(`[data-flight="${delegate.id}"]`).length, 1)
-assert.ok(svg.querySelector('[data-lm-key="trail"]'))
+assert.equal(svg.querySelector('[data-lm-key="trail"]'), null)
+assert.equal(svg.querySelectorAll('[data-lm-key^="leg-"]').length, 0)
 await React.act(() => { fire('tool.complete', {tool_id:'one',name:'terminal'}); fire('reasoning.delta', {text:'secret-reasoning'}) })
 await React.act(async () => { await new Promise(r => setTimeout(r,25)) })
 assert.equal(svg.querySelector(`[data-flight="${toolEntry.id}"]`), overlayFlight)
+// Completion waits until the 800 ms outbound journey reaches its destination.
+assert.equal(overlayFlight.dataset.outcome, undefined)
+assert.ok(overlayFlight.querySelector('.satellite'))
+time += 800
+await React.act(async () => { await new Promise(r => setTimeout(r,25)) })
 assert.equal(overlayFlight.dataset.outcome, 'success')
+assert.equal(overlayFlight.querySelector('.satellite'), null)
 assert.equal(overlayFlight.querySelector('.pulse-dot').getAttribute('fill'), '#a8d9b5')
+// Exercise the actual React adapter across reconciliations and the entire fade.
+const replyAt = time
+const response = overlayFlight.querySelectorAll('.response-trail path')
+const overlappingFlight = svg.querySelector(`[data-flight="${delegate.id}"]`)
+time = replyAt + 400
+await React.act(async () => { tick(); await new Promise(r => setTimeout(r,25)) })
+assert.equal(svg.querySelector(`[data-flight="${toolEntry.id}"]`), overlayFlight)
+assert.equal(Number(response[0].getAttribute('opacity')), 0)
+assert.ok(Number(response[39].getAttribute('opacity')) > .99)
+assert.equal(svg.querySelector(`[data-flight="${delegate.id}"]`), overlappingFlight)
+time = replyAt + 30000
+await React.act(async () => { tick(); await new Promise(r => setTimeout(r,25)) })
+assert.ok(Math.abs(Number(response[39].getAttribute('opacity')) - .5) < .001)
+time = replyAt + 59999
+await React.act(async () => { tick(); await new Promise(r => setTimeout(r,25)) })
+assert.ok(Number(response[39].getAttribute('opacity')) > 0)
+time = replyAt + 60800
+await React.act(async () => { tick(); await new Promise(r => setTimeout(r,25)) })
+assert.equal(overlayFlight.isConnected, false)
+assert.equal(svg.querySelector(`[data-flight="${delegate.id}"]`), overlappingFlight)
 await React.act(() => fire('tool.complete', {tool_id:'delegation',name:'delegate_task',result:{success:false}}))
 await React.act(async () => { await new Promise(r => setTimeout(r,25)) })
 const errorFlight = svg.querySelector(`[data-flight="${delegate.id}"]`)
@@ -97,6 +124,9 @@ await React.act(() => fire('subagent.complete',{subagent_id:'child2',status:'can
 await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 assert.equal(mod.__test.board.get().entries.find(e=>e.toolId==='child2').status,'err')
 assert.equal(mod.__test.board.get().entries.find(e=>e.toolId==='child3').status,'run')
+assert.equal(svg.querySelector(`[data-flight="${children[1].id}"]`).dataset.outcome,undefined)
+time += 800
+await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 assert.equal(svg.querySelector(`[data-flight="${children[1].id}"]`).dataset.outcome,'error')
 assert.ok(svg.querySelector(`[data-flight="${children[2].id}"] .satellite`))
 console.log('PASS all ten elapsed indicators and three independent identified child satellites; cancellation')
@@ -122,4 +152,4 @@ for(const station of ids){
 }
 await React.act(()=>allRoot.unmount())
 console.log('PASS real React overlay: two independent satellite slots on each of ten islands')
-console.log('PASS real React/jsdom: stable overlay, elapsed ring, duplicate suppression, completion, chronology, privacy')
+console.log('PASS real React/jsdom: stable overlay, elapsed ring, duplicate suppression, completion, no chronological links, privacy')

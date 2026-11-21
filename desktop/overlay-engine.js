@@ -50,23 +50,35 @@ function candidates(origin,destination){const key=origin+'→'+destination;if(ca
 const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
 const active=new Map(), seen=new Set(), routeSequences=new Map(); let dead=false, raf;
 function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false}) {
-  if(dead||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
+  if(dead||active.has(id)||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
   seen.add(id); if(seen.size>4096)seen.delete(seen.values().next().value); const key=origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
   const f={id,origin,destination,startedAt,endedAt,failed,pending:true};active.set(id,f);onChange();
   candidates(origin,destination).then(options=>{if(dead||!active.has(id))return;
-    if(f.endedAt && Date.now()-f.endedAt>=800){active.delete(id);onChange();return}
-    const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color=destination==='memory'?'#a5e6dc':'#f0c595';
-    const path=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5',opacity:'.35'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:color,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});
-    g.append(path,...dots,satellite);flights.append(g);
-    Object.assign(f,{pending:false,g,path,dots,satellite,slot:null,returning:false});onChange();
+    const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color=destination==='memory'?'#a5e6dc':'#f0c595', satelliteColor=destination==='memory'?'#a5e6dc':'#f0c595';
+    const path=elt('path',{d,fill:'none',stroke:'none'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:satelliteColor,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});
+    const out=elt('g',{class:'outbound-trail'}),back=elt('g',{class:'response-trail'});
+    const segment=(group,color,i)=>{const p=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5','data-segment':i,opacity:0});group.append(p);return p};
+    const outbound=Array.from({length:40},(_,i)=>segment(out,color,i)), response=Array.from({length:40},(_,i)=>segment(back,failed?'#e8654f':'#a8d9b5',i));
+    g.append(path,out,back,...dots,satellite);flights.append(g);
+    Object.assign(f,{pending:false,g,path,dots,satellite,outbound,response,slot:null,returning:false});onChange();
   }).catch(error=>{if(dead)return;active.delete(id);onChange(error)});
 }
-function end(id,endedAt=Date.now(),failed=false){const f=active.get(id);if(f&&!f.endedAt){f.endedAt=endedAt;f.failed=failed}}
+function end(id,endedAt=Date.now(),failed=false){const f=active.get(id);if(f&&f.endedAt==null){f.endedAt=endedAt;f.failed=failed}}
 function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=wall-f.startedAt;
- if(elapsed<0){for(const dot of f.dots)dot.style.display='none';f.satellite.style.display='none';continue}f.satellite.style.display='';
- if(f.endedAt && wall>=f.endedAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';changed=true}
- if(f.returning&&wall-f.endedAt>=800){f.g.remove();active.delete(id);changed=true;continue}
- for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-f.endedAt:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&(f.returning||elapsed<800)?'':'none';const p=f.path.getPointAtLength(travel*f.path.getTotalLength());dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
+ const returnAt=f.endedAt==null?Infinity:Math.max(f.startedAt+800,f.endedAt);
+ if(elapsed<0){f.g.style.display='none';continue}f.g.style.display='';
+ if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';changed=true}
+ if(wall>=returnAt+800+60000){f.g.remove();active.delete(id);changed=true;continue}
+ const length=f.path.getTotalLength(), n=f.outbound.length, outProgress=Math.max(0,Math.min(1,elapsed/800)), backProgress=Math.max(0,Math.min(1,(wall-returnAt)/800));
+ // Each small interval is clipped on the original path: no straight-line shortcuts at bends.
+ for(let i=0;i<n;i++){const lo=i/n,hi=(i+1)/n, outEnd=Math.min(hi,outProgress,1-backProgress), backStart=Math.max(lo,1-backProgress);
+   const paint=(p,start,end,opacity)=>{p.setAttribute('stroke-dasharray',`${Math.max(0,(end-start)*length)} ${length+1}`);p.setAttribute('stroke-dashoffset',-start*length);p.setAttribute('opacity',end>start?opacity:0)};
+   const outLit=f.startedAt+lo*800, backLit=returnAt+(1-hi)*800;
+   paint(f.outbound[i],lo,outEnd,Math.max(.5,1-Math.max(0,wall-outLit)/60000));
+   paint(f.response[i],backStart,hi,Math.max(0,1-Math.max(0,wall-backLit)/60000));
+ }
+ for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-returnAt:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&age<800+k*45?'':'none';const p=f.path.getPointAtLength(travel*length);dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
+ f.satellite.style.display=f.returning?'none':'';
  if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),spacing=9.5,capacity=Math.max(0,Math.floor((outer-9.5)/spacing)+1);
  // Fixed concentric slots never shift when other calls finish. Overflow waits
  // invisibly for a slot instead of overlapping another orbit or crossing the cap.

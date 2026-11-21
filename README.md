@@ -6,7 +6,7 @@ A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/h
 
 ## Features
 
-- Animated pulses for tool starts and completions; markers for failures. Fading station-to-station links show observed start order, not causality or call dependencies. Equal timestamps follow arrival order; different sessions may be mixed.
+- Animated colored trails follow each observed event’s actual origin and destination, with return trails for completions and markers for failures. Outbound trails fade to half opacity over 30 seconds; return trails fade over 60 seconds. Chronological station-to-station links are not drawn; different sessions may be mixed.
 - Active tool calls orbit their station (static dots with reduced motion). Active identified calls and observed model intervals receive separate overlay satellites; each identified active child receives its own satellite and independently completes. Parent delegations and children may both appear because gateway events do not reliably identify their relationship; no correlation is invented. The ×N badge counts observed entries, not necessarily distinct underlying work.
 - Animated overlay satellites use stable concentric slots, 9.5 SVG units apart (the stroked dot has a 4.75-unit footprint radius). The outer edge stays within half the distance to the nearest island centre. Capacity is finite; extra active calls keep their flight but their satellite waits hidden until a slot is freed. Inner slots may cross the island artwork, and this cap does not guarantee clearance from labels or neighbouring artwork.
 - Station counters and a central context-usage indicator when usage is available.

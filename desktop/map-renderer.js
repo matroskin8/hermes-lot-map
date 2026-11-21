@@ -26,8 +26,6 @@ var LotMapOriginal = (() => {
     MAP_ASPECT: () => MAP_ASPECT,
     PULSE_MS: () => PULSE_MS,
     SWITCH_MS: () => SWITCH_MS,
-    TRAIL_FADE_MS: () => TRAIL_FADE_MS,
-    TRAIL_HOLD_MS: () => TRAIL_HOLD_MS,
     drawMap: () => drawMap,
     routeOf: () => routeOf
   });
@@ -116,8 +114,6 @@ var LotMapOriginal = (() => {
   var ALARM_MS = 6e3;
   var SWITCH_MS = 8e3;
   var DONE_MS = 1100;
-  var TRAIL_HOLD_MS = PULSE_MS;
-  var TRAIL_FADE_MS = 6e4;
   var turn = (i, shift) => (i + shift) * 2 * Math.PI / STATIONS.length;
   var at = (a, f = 1) => ({ x: CX + RX * f * Math.sin(a), y: CY - RY * f * Math.cos(a) });
   var place = (i, shift) => at(turn(i, shift));
@@ -167,30 +163,6 @@ var LotMapOriginal = (() => {
       if (!last || last.station !== e.station) stops.push({ station: e.station, at: e.startedAt });
     }
     return stops.slice(-max);
-  }
-  function trail(entries, now, c, isStill, shift) {
-    const ordered = [...entries].filter((e) => e.startedAt <= now).sort((a, b) => a.startedAt - b.startedAt);
-    let out = "";
-    let previous;
-    for (const e of ordered) {
-      if (!previous) {
-        previous = e;
-        continue;
-      }
-      if (previous.station === e.station) {
-        previous = e;
-        continue;
-      }
-      const age = now - e.startedAt;
-      const options = ROUTES[`${shift}:${previous.station}:${e.station}`];
-      if (age < TRAIL_HOLD_MS + TRAIL_FADE_MS && options?.length) {
-        const key = escapeXml(`${previous.id}-${e.id}`);
-        const fade = `<animate data-lm-key="fade" attributeName="opacity" values=".4;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`;
-        out += `<path data-lm-key="leg-${key}" d="${options[0]}" fill="none" stroke="${c.trail}" stroke-width="1.1" opacity=".4">${fade}</path>`;
-      }
-      previous = e;
-    }
-    return out;
   }
   function station(s, i, { entries, board, now, c, names, isStill, shift, spent }) {
     const p = place(i, shift);
@@ -263,7 +235,6 @@ var LotMapOriginal = (() => {
     const scene = { entries: recent, board, now, c, names: setup.t.stations, isStill, shift, spent: setup.contextCost ? board.spent : void 0 };
     const drawn = STATIONS.map((s, i) => station(s, i, scene));
     body += drawn.map((d, i) => `<g data-lm-key="under-${i}">${d.under}</g>`).join("");
-    body += `<g data-lm-key="trail">${trail(board.entries, now, c, isStill, shift)}</g>`;
     const ends = (e) => {
       const p = place(indexOf(e.station), shift);
       const start = e.from === "agents" ? agentsAt : core;
