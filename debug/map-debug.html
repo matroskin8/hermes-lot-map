@@ -1,0 +1,466 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hermes Lot Map — отладка</title><style>
+*{box-sizing:border-box}body{margin:0;background:#0a0c11;color:#ebe6dc;font:15px system-ui,sans-serif}main{max-width:1050px;margin:auto;padding:20px}h1{font-size:23px;margin:0 0 8px}.layout{display:grid;grid-template-columns:minmax(300px,620px) minmax(240px,1fr);gap:20px;align-items:start}#map svg{display:block;width:100%;height:auto}.controls{background:#12151c;border:1px solid #272c36;border-radius:12px;padding:16px}label{display:block;margin:12px 0 5px}select,button{font:inherit;background:#202633;color:#fff;border:1px solid #596274;border-radius:6px;padding:9px;width:100%}button{cursor:pointer;margin-top:10px}button.primary{background:#b8762a;border-color:#e1ac6e;color:#fff;font-weight:bold}button:disabled{opacity:.45;cursor:not-allowed}.row{display:flex;gap:8px}.row button{flex:1}small,p{color:#adb4c0;line-height:1.45}.hit{cursor:pointer;fill:transparent;stroke:transparent;stroke-width:3}.hit:hover,.hit:focus{stroke:#f0c595;outline:none}.selection{pointer-events:none}.flight{pointer-events:none}@media(max-width:700px){.layout{grid-template-columns:1fr}}
+</style></head><body><main><h1>Hermes Lot Map — отладка маршрутов</h1><p>Выберите отправление и назначение кликом по станциям или в списках; затем нажмите «Отправить». Повторная отправка создаёт точки; безопасные маршруты могут повторно использоваться, точки запускаются с задержкой и занимают разные орбиты. Полная раздельность маршрутов не гарантируется.</p><div class="layout"><div id="map" aria-label="Карта станций"></div><section class="controls"><label for="from">Откуда</label><select id="from"></select><label for="to">Куда</label><select id="to"></select><div class="row"><button id="swap" type="button">⇄ Поменять</button><button id="reset" type="button">Сбросить</button></div><label><input type="checkbox" id="zones"> Показать запрещённые зоны</label><button class="primary" id="send" type="button">Отправить →</button><p id="status" role="status" aria-live="polite">Выберите отправление и назначение.</p><p>Клик по карте: сначала отправление, затем назначение. Следующий клик начинает новый выбор. Можно использовать списки и клавиатуру.</p><p><strong>Важно:</strong> карта нарисована оригинальным рендерером плагина. Отладочные вызовы существуют только в браузере: каждый активен случайные 2–5 секунд, затем точка возвращается к отправлению; вероятность ошибки — 10%. Цвет и размер импульсов следуют палитре рендерера, но маршруты и симуляция отладочные, не идентичны production. Спутник на орбите обозначает активный вызов; параллельные вызовы видны отдельно.</p><small>Источник: hermes-lot-map, main, 39fab7c7c207c6fe8f6400479ecc6e687897ff71. Полностью автономный файл.</small></section></div></main>
+<script>
+var LotMapOriginal = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // vendor/lot-map/hooks/draw.ts
+  var draw_exports = {};
+  __export(draw_exports, {
+    ALARM_MS: () => ALARM_MS,
+    DONE_MS: () => DONE_MS,
+    GLOW_MS: () => GLOW_MS,
+    MAP_ASPECT: () => MAP_ASPECT,
+    PULSE_MS: () => PULSE_MS,
+    SWITCH_MS: () => SWITCH_MS,
+    TRAIL_FADE_MS: () => TRAIL_FADE_MS,
+    TRAIL_HOLD_MS: () => TRAIL_HOLD_MS,
+    drawMap: () => drawMap,
+    routeOf: () => routeOf
+  });
+
+  // vendor/lot-map/hooks/classify.ts
+  function shortModel(model) {
+    const m = /claude-([a-z]+)-(\d+)(?:-(\d+))?/.exec(model);
+    return m === null ? model : `${m[1]} ${m[2]}${m[3] !== void 0 ? `.${m[3]}` : ""}`;
+  }
+  function formatTokens(tokens) {
+    const n = Math.max(0, Math.round(tokens));
+    if (n < 1e3) return String(n);
+    const k = Math.round(n / 1e3);
+    return k < 1e3 ? `${k}k` : `${Math.round(n / 1e6)}M`;
+  }
+
+  // vendor/lot-map/hooks/palette.ts
+  var DARK = {
+    ground: "#0a0c11",
+    raised: "#12151c",
+    line: "#272c36",
+    spoke: "#1a1e27",
+    bone: "#ebe6dc",
+    ash: "#9ba1ab",
+    dim: "#6b7280",
+    accent: "#e1ac6e",
+    hot: "#f0c595",
+    red: "#e8654f",
+    mem: "#62c7ba",
+    memHot: "#a5e6dc",
+    // One step away from `bone`, so that the light rules can give the route a color of its own.
+    trail: "#ebe6dd"
+  };
+  var LIGHT = {
+    ground: "#f5f2ea",
+    raised: "#ffffff",
+    line: "#cfc9bc",
+    spoke: "#e3ded2",
+    bone: "#1f2228",
+    ash: "#5f6570",
+    dim: "#8b909a",
+    accent: "#b8762a",
+    hot: "#8f560f",
+    red: "#c5402b",
+    mem: "#1c8c81",
+    memHot: "#136a62",
+    trail: "#9c978b"
+  };
+  var lightRules = (own = {}) => `<style>@media (prefers-color-scheme: light){${Object.keys(DARK).filter((k) => own[k] === void 0 && !Object.values(own).includes(DARK[k])).map((k) => `[fill="${DARK[k]}"]{fill:${LIGHT[k]}}[stroke="${DARK[k]}"]{stroke:${LIGHT[k]}}`).join("")}}</style>`;
+
+  // vendor/lot-map/hooks/setup.ts
+  var STATIONS = [
+    { id: "you", icon: `${ring(0, -3.6, 3.4)}M-6.5 8c0-4 3-6.2 6.5-6.2s6.5 2.2 6.5 6.2` },
+    { id: "model", icon: "M-5 -5h10v10h-10zM-2 -8.5v3.5M2 -8.5v3.5M-2 5v3.5M2 5v3.5M-8.5 -2h3.5M-8.5 2h3.5M5 -2h3.5M5 2h3.5" },
+    { id: "memory", icon: `M-5 4.5L0 -5L6 3.5M-5 4.5L6 3.5${ring(-5, 4.5, 2.1)}${ring(0, -5, 2.1)}${ring(6, 3.5, 2.1)}` },
+    { id: "files", icon: "M-5.5 -8h7.5l3.5 3.5v12.5h-11zM2 -8v3.5h3.5" },
+    { id: "shell", icon: "M-7.5 -5l5 5l-5 5M0 6h7.5" },
+    { id: "web", icon: `${ring(0, 0, 7.8)}M-7.8 0h15.6M0 -7.8c-4.2 4.2 -4.2 11.4 0 15.6M0 -7.8c4.2 4.2 4.2 11.4 0 15.6` },
+    { id: "browser", icon: "M-8.5 -6.5h17v13h-17zM-8.5 -2.8h17M-6.3 -4.7h.1M-3.8 -4.7h.1" },
+    { id: "agents", icon: `M0 -4v3.5M0 -.5L-6 4M0 -.5L6 4${ring(0, -6, 2.1)}${ring(-6.5, 5.5, 2.1)}${ring(6.5, 5.5, 2.1)}` },
+    { id: "skills", icon: "M1.5 -8.5L-5.5 1h4.5l-1.5 7.5l7.5 -9.8h-4.5z" },
+    { id: "hooks", icon: `M2.5 -5.5v8a4.2 4.2 0 1 1 -8.4 0v-1.5${ring(2.5, -7.3, 1.8)}` }
+  ];
+  function ring(x, y, r) {
+    return `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+  }
+
+  // vendor/lot-map/hooks/draw.ts
+  var W = 460;
+  var H = 430;
+  var MAP_ASPECT = H / W;
+  var CX = 230;
+  var CY = 212;
+  var RX = 176;
+  var RY = 164;
+  var NODE = 22;
+  var CORE = 40;
+  var HUB = CORE + 8;
+  var FONT = 'font-family="SF Mono, ui-monospace, Menlo, monospace"';
+  var PULSE_MS = 800;
+  var RIPPLE_MS = 450;
+  var GLOW_MS = 3200;
+  var ALARM_MS = 6e3;
+  var SWITCH_MS = 8e3;
+  var DONE_MS = 1100;
+  var TRAIL_STOPS = 7;
+  var TRAIL_HOLD_MS = PULSE_MS;
+  var TRAIL_FADE_MS = 6e4;
+  var turn = (i, shift) => (i + shift) * 2 * Math.PI / STATIONS.length;
+  var at = (a, f = 1) => ({ x: CX + RX * f * Math.sin(a), y: CY - RY * f * Math.cos(a) });
+  var place = (i, shift) => at(turn(i, shift));
+  var indexOf = (id) => STATIONS.findIndex((s) => s.id === id);
+  var n1 = (v) => (Math.round(v * 10) / 10).toString();
+  var clock = (ms) => `${(ms / 1e3).toFixed(3)}s`;
+  function edge(from, to, r) {
+    const d = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+    return { x: from.x + (to.x - from.x) * r / d, y: from.y + (to.y - from.y) * r / d };
+  }
+  function aside(a, b, off) {
+    const d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const dx = -(b.y - a.y) * off / d;
+    const dy = (b.x - a.x) * off / d;
+    return [{ x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy }];
+  }
+  function pulse(a, b, color, age, radius, isHollow = false) {
+    const path = `M${n1(a.x)} ${n1(a.y)}L${n1(b.x)} ${n1(b.y)}`;
+    let out = "";
+    for (let k = isHollow ? 0 : 2; k >= 0; k--) {
+      const timing = `begin="${clock(k * 45 - age)}" dur="${clock(PULSE_MS)}" fill="freeze"`;
+      const peak = n1(1 - 0.36 * k);
+      const paint = isHollow ? `fill="none" stroke="${color}" stroke-width="1.4"` : `fill="${color}"`;
+      out += `<circle r="${n1(radius * (1 - 0.27 * k))}" ${paint} opacity="0"><animateMotion path="${path}" ${timing}/><animate attributeName="opacity" values="${peak};${peak};0" keyTimes="0;.82;1" ${timing}/></circle>`;
+    }
+    return out;
+  }
+  function ripple(p, r, color, age) {
+    const timing = `begin="${clock(PULSE_MS - age)}" dur="${clock(RIPPLE_MS)}" fill="freeze"`;
+    return `<circle cx="${n1(p.x)}" cy="${n1(p.y)}" r="${r}" fill="none" stroke="${color}" stroke-width="1.2" opacity="0"><animate attributeName="r" values="${r};${r + 11}" ${timing}/><animate attributeName="opacity" values=".7;0" ${timing}/></circle>`;
+  }
+  function beam(a, b, color, age, isDashed) {
+    return `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke="${color}" stroke-width="1.4"${isDashed ? ' stroke-dasharray="3 4"' : ""} opacity="0"><animate attributeName="opacity" values=".75;0" begin="${clock(-age)}" dur="${clock(GLOW_MS / 2)}" fill="freeze"/></line>`;
+  }
+  var BEND = [0.5, 0.5, 0.4, 0.45, 0.55, 0.75];
+  function leg(i, j, shift) {
+    const n = STATIONS.length;
+    let steps = ((j - i) % n + n) % n;
+    if (steps > n / 2) steps -= n;
+    const bend = at(turn(i + steps / 2, shift), BEND[Math.abs(steps)] ?? 0.5);
+    const a = edge(place(i, shift), bend, NODE + 4);
+    const b = edge(place(j, shift), bend, NODE + 4);
+    return { path: `M${n1(a.x)} ${n1(a.y)}Q${n1(bend.x)} ${n1(bend.y)} ${n1(b.x)} ${n1(b.y)}`, end: b };
+  }
+  function routeOf(entries, max = TRAIL_STOPS) {
+    const stops = [];
+    for (const e of entries) {
+      if (e.from === "agents" || e.station === "model") continue;
+      const last = stops[stops.length - 1];
+      if (last === void 0 || last.station !== e.station) stops.push({ station: e.station, at: e.startedAt });
+    }
+    return stops.slice(-max);
+  }
+  function trail(entries, now, c, isStill, shift) {
+    const stops = routeOf(entries);
+    let out = "";
+    for (let k = 1; k < stops.length; k++) {
+      const from = stops[k - 1];
+      const to = stops[k];
+      if (from === void 0 || to === void 0) continue;
+      const { path, end } = leg(indexOf(from.station), indexOf(to.station), shift);
+      const isHead = k === stops.length - 1;
+      const age = now - to.at;
+      if (age >= TRAIL_HOLD_MS + TRAIL_FADE_MS) continue;
+      const opacity = n1(0.12 + 0.5 * k / (stops.length - 1));
+      const fade = `<animate data-lm-key="fade" attributeName="opacity" values="${opacity};0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`;
+      const drawing = isHead && !isStill ? ` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(to.at - now)}" dur=".5s" fill="freeze"/>` : ">";
+      const key = escapeXml(`${from.station}-${from.at}-${to.station}-${to.at}`);
+      out += `<path data-lm-key="leg-${key}" d="${path}" fill="none" stroke="${c.trail}" stroke-width="${isHead ? 1.5 : 1.1}" stroke-linecap="round" opacity="${opacity}"${drawing}${fade}</path>`;
+      if (isHead) {
+        out += `<circle data-lm-key="tip-${key}" cx="${n1(end.x)}" cy="${n1(end.y)}" r="2.4" fill="${c.trail}" opacity="${isStill ? ".85" : "0"}">` + (isStill ? "" : `<animate attributeName="opacity" values="0;.85" begin="${clock(to.at - now + 400)}" dur=".15s" fill="freeze"/>`) + `<animate attributeName="opacity" values=".85;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/></circle>`;
+      }
+    }
+    return out;
+  }
+  function station(s, i, { entries, board, now, c, names, isStill, shift, spent }) {
+    const p = place(i, shift);
+    const x = n1(p.x);
+    const y = n1(p.y);
+    const count = board.counts[s.id] ?? 0;
+    const own = entries.filter((e) => e.station === s.id);
+    const running = own.filter((e) => e.status === "run");
+    const latest = own.length > 0 ? own[own.length - 1] : void 0;
+    const since = latest === void 0 ? Infinity : now - (latest.endedAt ?? latest.startedAt);
+    const alarm = own.filter((e) => e.status === "block" || e.status === "err").pop();
+    const alarmAge = alarm === void 0 ? Infinity : now - (alarm.endedAt ?? alarm.startedAt);
+    const isAlarm = alarmAge < ALARM_MS;
+    const isLit = running.length > 0 || since < GLOW_MS;
+    const [main, hot] = s.id === "memory" ? [c.mem, c.memHot] : [c.accent, c.hot];
+    const color = isAlarm ? c.red : main;
+    const fade = isAlarm ? alarmAge : since;
+    const span = isAlarm ? ALARM_MS : GLOW_MS;
+    let under = "";
+    if (isLit || isAlarm) {
+      under += running.length > 0 && !isAlarm ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".16"/>` : `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="0"><animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`;
+    }
+    if (running.length > 0) {
+      const elapsed = now - Math.min(...running.map((e) => e.startedAt));
+      const beat = `begin="${clock(-(elapsed % 1400))}" dur="1.4s" repeatCount="indefinite"`;
+      if (!isStill) {
+        under += `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.3"><animate attributeName="r" values="${NODE};${NODE + 15}" ${beat}/><animate attributeName="opacity" values=".9;0" ${beat}/></circle>`;
+      }
+      const hand = (r, width, lapMs, isOnce) => `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
+      under += hand(NODE + 4, 2.2, 6e4, false) + hand(NODE + 8, 1.2, 6e5, true);
+    }
+    const lit = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.2"`;
+    const cooling = running.length > 0 ? `${lit}/>` : isLit || isAlarm ? `${lit} opacity="0"><animate attributeName="opacity" values="1;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>` : "";
+    const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === "memory" && count > 0 ? main : c.ash;
+    const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round"`;
+    let over = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/><text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`;
+    if (count > 0) {
+      const pushed = s.id === "memory" ? Math.min(count, board.pushed ?? 0) : 0;
+      const asked = count - pushed;
+      const figures = pushed === 0 ? String(count) : `${asked > 0 ? `${asked} ` : ""}<tspan fill="${main}">\u2193${pushed}</tspan>`;
+      const tokens = spent?.[s.id] ?? 0;
+      const cost = tokens > 0 ? ` \xB7 ${formatTokens(tokens)}` : "";
+      over += `<text x="${x}" y="${n1(p.y + NODE + 28)}" text-anchor="middle" ${FONT} font-size="9.5" ${rim} fill="${c.dim}">${figures}${cost}</text>`;
+    }
+    const corner = NODE * 0.74;
+    if (running.length > 1) {
+      over += `<circle cx="${n1(p.x + corner)}" cy="${n1(p.y - corner)}" r="8" fill="${c.raised}" stroke="${color}" stroke-width="1"/><text x="${n1(p.x + corner)}" y="${n1(p.y - corner + 3)}" text-anchor="middle" ${FONT} font-size="8.5" fill="${hot}">\xD7${running.length}</text>`;
+    }
+    const faults = board.faults?.[s.id] ?? 0;
+    if (faults > 0) {
+      over += `<circle cx="${n1(p.x - corner)}" cy="${n1(p.y - corner)}" r="7.5" fill="${c.red}"/><text x="${n1(p.x - corner)}" y="${n1(p.y - corner + 3.1)}" text-anchor="middle" ${FONT} font-size="9" font-weight="700" fill="${c.ground}">${faults > 99 ? "99+" : faults}</text>`;
+    }
+    return { under, over };
+  }
+  function drawMap(board, now, setup) {
+    const c = { ...setup.theme === "light" ? LIGHT : DARK, ...setup.colors };
+    const shift = setup.layout === "you-bottom" ? STATIONS.length / 2 : 0;
+    const core = { x: CX, y: CY };
+    const recent = board.entries.slice(-40);
+    const isStill = setup.motion === "reduced";
+    const flights = isStill ? [] : recent.filter((e) => now - e.startedAt < PULSE_MS + RIPPLE_MS).slice(-14);
+    const returns = isStill ? [] : recent.filter((e) => e.endedAt !== void 0 && e.from !== "inbound" && now - e.endedAt < PULSE_MS + RIPPLE_MS).slice(-14);
+    const beams = recent.filter((e) => now - e.startedAt < GLOW_MS / 2).slice(-10);
+    const anyRunning = recent.some((e) => e.status === "run");
+    const agentsAt = place(indexOf("agents"), shift);
+    const isBad = (e) => e.status === "block" || e.status === "err";
+    const tone = (e) => e.station === "memory" ? [c.mem, c.memHot] : [c.accent, c.hot];
+    let body = setup.background === "transparent" ? "" : `<rect width="${W}" height="${H}" rx="12" fill="${c.ground}"/>`;
+    for (const [rx, ry] of [[66, 62], [104, 97], [142, 132]]) {
+      body += `<ellipse cx="${CX}" cy="${CY}" rx="${rx}" ry="${ry}" fill="none" stroke="${c.line}" stroke-width=".7" opacity=".45" stroke-dasharray="2 5"/>`;
+    }
+    const scene = { entries: recent, board, now, c, names: setup.t.stations, isStill, shift, spent: setup.contextCost ? board.spent : void 0 };
+    const drawn = STATIONS.map((s, i) => station(s, i, scene));
+    body += drawn.map((d, i) => `<g data-lm-key="under-${i}">${d.under}</g>`).join("");
+    body += `<g data-lm-key="trail">${trail(recent, now, c, isStill, shift)}</g>`;
+    const ends = (e) => {
+      const p = place(indexOf(e.station), shift);
+      const start = e.from === "agents" ? agentsAt : core;
+      return [edge(start, p, e.from === "agents" ? NODE : HUB), edge(p, start, NODE)];
+    };
+    const lane = (e, returning) => {
+      const time = returning ? e.endedAt : e.startedAt;
+      const peers = recent.filter((x) => x !== e && x.station === e.station && x.from === e.from &&
+        (returning ? x.endedAt !== void 0 && x.endedAt <= time : x.startedAt <= time) &&
+        time - (returning ? x.endedAt : x.startedAt) < PULSE_MS + RIPPLE_MS);
+      const n = peers.filter(x => (returning ? x.endedAt : x.startedAt) < time || recent.indexOf(x) < recent.indexOf(e)).length;
+      return n === 0 ? 0 : Math.ceil(n / 2) * (n % 2 ? 5 : -5);
+    };
+    for (const e of beams) {
+      const [a, b] = ends(e);
+      body += `<g data-lm-key="beam-${escapeXml(String(e.id))}">${beam(a, b, isBad(e) ? c.red : tone(e)[0], now - e.startedAt, e.from === "inbound")}</g>`;
+    }
+    for (const e of flights) {
+      const [a, b] = aside(...ends(e), lane(e, false));
+      const age = now - e.startedAt;
+      const color = e.status === "block" ? c.red : tone(e)[1];
+      body += `<g data-lm-key="flight-${escapeXml(String(e.id))}">`;
+      if (e.from === "inbound") {
+        body += pulse(b, a, color, age, 3.8, true) + ripple(core, HUB - 2, color, age);
+      } else {
+        body += pulse(a, b, color, age, 3.8) + ripple(place(indexOf(e.station), shift), NODE, color, age);
+      }
+      body += `</g>`;
+    }
+    for (const e of returns) {
+      const [a, b] = aside(...ends(e), lane(e, true));
+      body += `<g data-lm-key="return-${escapeXml(String(e.id))}">${pulse(b, a, e.status === "ok" ? c.ash : c.red, now - e.endedAt, 2.6)}</g>`;
+    }
+    body += drawn.map((d, i) => `<g data-lm-key="over-${i}">${d.over}</g>`).join("");
+    const crew = (board.agents ?? []).slice(0, 6);
+    crew.forEach((_, k) => {
+      const lap = 7e3;
+      const spin = `${n1(agentsAt.x)} ${n1(agentsAt.y)}`;
+      if (isStill) {
+        body += `<g transform="rotate(${n1(360 * k / crew.length)} ${spin})"><circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`;
+        return;
+      }
+      body += `<g><animateTransform attributeName="transform" type="rotate" from="0 ${spin}" to="360 ${spin}" begin="${clock(-((now + k * lap / crew.length) % lap))}" dur="${clock(lap)}" repeatCount="indefinite"/><circle cx="${n1(agentsAt.x)}" cy="${n1(agentsAt.y - NODE - 6)}" r="3" fill="${c.hot}"/></g>`;
+    });
+    const coreSize = Math.min(17, 62 / (0.75 * setup.core.length));
+    const period = anyRunning ? 1600 : 4800;
+    const breath = `begin="${clock(-(now % period))}" dur="${clock(period)}" repeatCount="indefinite"`;
+    body += (isStill ? `<circle cx="${CX}" cy="${CY}" r="${CORE + 8}" fill="${c.accent}" opacity="${anyRunning ? ".16" : ".08"}"/>` : `<circle cx="${CX}" cy="${CY}" r="${CORE + 6}" fill="${c.accent}" opacity=".08"><animate attributeName="r" values="${CORE + 3};${CORE + 13};${CORE + 3}" ${breath}/><animate attributeName="opacity" values=".05;${anyRunning ? ".24" : ".12"};.05" ${breath}/></circle>`) + `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="${c.raised}" stroke="${anyRunning ? c.accent : c.line}" stroke-width="1.3"/>`;
+    if (board.context !== void 0) {
+      const full = Math.max(0, Math.min(100, Math.round(board.context)));
+      const ring2 = `cx="${CX}" cy="${CY}" r="${CORE + 5}" fill="none" stroke-width="2.2"`;
+      body += `<circle ${ring2} stroke="${c.line}" opacity=".7"/><circle ${ring2} stroke="${full >= 90 ? c.red : full >= 70 ? c.accent : c.ash}" pathLength="100" stroke-dasharray="${full} 100" transform="rotate(-90 ${CX} ${CY})"/><text x="${CX}" y="${CY - 19}" text-anchor="middle" ${FONT} font-size="8" fill="${c.dim}">${full}%</text>`;
+    }
+    const switchAge = board.switchedAt === void 0 ? Infinity : now - board.switchedAt;
+    const isSwitching = switchAge >= 0 && switchAge < SWITCH_MS;
+    body += `<text x="${CX}" y="${CY + (board.model === void 0 ? 6 : 1)}" text-anchor="middle" ${FONT} font-size="${n1(coreSize)}" letter-spacing="${n1(coreSize * 0.147)}" fill="${c.bone}">${escapeXml(setup.core)}</text>`;
+    if (board.model !== void 0) {
+      body += `<text x="${CX}" y="${CY + 17}" text-anchor="middle" ${FONT} font-size="9" fill="${isSwitching ? c.hot : c.ash}">${escapeXml(shortModel(board.model))}</text>`;
+    }
+    if (isSwitching && !isStill) {
+      const model = place(indexOf("model"), shift);
+      const laps = Math.ceil((SWITCH_MS - switchAge) / 1600);
+      for (const [p, r] of [[core, CORE], [model, NODE]]) {
+        const ringing = `begin="${clock(-(switchAge % 1600))}" dur="1.6s" repeatCount="${laps}" fill="freeze"`;
+        body += `<circle cx="${n1(p.x)}" cy="${n1(p.y)}" r="${r}" fill="none" stroke="${c.bone}" stroke-width="1.4" opacity="0"><animate attributeName="r" values="${r};${r + 26}" ${ringing}/><animate attributeName="opacity" values=".7;0" ${ringing}/></circle>`;
+      }
+    }
+    const done = recent.filter((e) => e.mark === "done").pop();
+    if (done !== void 0 && now - done.startedAt < DONE_MS && !isStill) {
+      const leaving = `begin="${clock(done.startedAt - now)}" dur="${clock(DONE_MS)}" fill="freeze"`;
+      body += `<circle cx="${CX}" cy="${CY}" r="${CORE}" fill="none" stroke="${c.bone}" stroke-width="1.6" opacity="0"><animate attributeName="r" values="${CORE};${CORE + 38}" ${leaving}/><animate attributeName="opacity" values=".6;0" ${leaving}/></circle>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W * 2}" height="${H * 2}">${setup.theme === "auto" ? lightRules(setup.colors) : ""}${body}</svg>`;
+  }
+  function escapeXml(text) {
+    return text.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
+  }
+  return __toCommonJS(draw_exports);
+})();
+
+</script><script>
+(()=>{'use strict';
+const stations=[['you','Вы'],['model','Модель'],['memory','Память'],['files','Файлы'],['shell','Терминал'],['web','Веб'],['browser','Браузер'],['agents','Агенты'],['skills','Навыки'],['hooks','Хуки']];
+const locations=[['hermes','HERMES'],...stations], names=Object.fromEntries(locations), ns='http://www.w3.org/2000/svg';
+const setup={theme:'dark',colors:{},layout:'you-top',motion:'full',background:'solid',t:{stations:names},contextCost:false,core:'HERMES'};
+const board={entries:[],counts:{},faults:{},agents:[]};
+const host=document.querySelector('#map');host.innerHTML=LotMapOriginal.drawMap(board,Date.now(),setup);const svg=host.querySelector('svg');
+const from=document.querySelector('#from'),to=document.querySelector('#to'),status=document.querySelector('#status'),send=document.querySelector('#send');
+for(const sel of [from,to]){sel.add(new Option('— выберите станцию —',''));for(const [id,name] of locations)sel.add(new Option(name,id));}
+const point=i=>({x:230+176*Math.sin(i*2*Math.PI/10),y:212-164*Math.cos(i*2*Math.PI/10)});
+const position=id=>id==='hermes'?{x:230,y:212}:point(stations.findIndex(x=>x[0]===id));
+const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
+const zones=elt('g',{class:'zones',display:'none','pointer-events':'none'});svg.append(zones);const flights=elt('g',{class:'flights'}),selection=elt('g',{class:'selection'}),hits=elt('g');svg.append(flights,selection,hits);
+let phase=0,active=new Map(),serial=0,outcomes=[];
+// Keep each ordered pair's sequence even after its flights have completed.
+const routeSequences=new Map();
+function refresh(){selection.replaceChildren();for(const [sel,color] of [[from,'#75ddcf'],[to,'#ffbe75']]){if(!sel.value)continue;const p=position(sel.value);selection.append(elt('circle',{cx:p.x,cy:p.y,r:sel.value==='hermes'?43:27,fill:'none',stroke:color,'stroke-width':3}));}send.disabled=!from.value||!to.value||from.value===to.value;status.textContent=from.value&&to.value?(from.value===to.value?'Выберите разные станции.':names[from.value]+' → '+names[to.value]+' · активных: '+[...active.values()].filter(f=>!f.returning).length):'Выберите отправление и назначение.';if(outcomes.length)status.textContent+=' · '+outcomes.join(' · ');}
+for(const [id,name] of locations){const p=position(id),hit=elt('circle',{cx:p.x,cy:p.y,r:id==='hermes'?35:25,class:'hit',tabindex:'0',role:'button','aria-label':name});const choose=()=>{if(phase===0||!from.value||to.value){from.value=id;to.value='';phase=1}else{to.value=id;phase=0}refresh()};hit.addEventListener('click',choose);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose()}});hits.append(hit)}
+for(const sel of [from,to])sel.addEventListener('change',()=>{phase=to.value?0:1;refresh()});
+document.querySelector('#swap').onclick=()=>{[from.value,to.value]=[to.value,from.value];phase=to.value?0:1;refresh()};
+document.querySelector('#reset').onclick=()=>{from.value='';to.value='';phase=0;generation++;active.clear();outcomes=[];routeSequences.clear();flights.replaceChildren();refresh()};
+// Geometry is deliberately conservative: island orbit/badges and text are obstacles.
+const obstacles=locations.flatMap(([id,name])=>{const p=position(id);if(id==='hermes')return [{id,type:'circle',x:p.x,y:p.y,r:55}];return [{id,type:'circle',x:p.x,y:p.y,r:36},{id,type:'rect',x:p.x-Math.max(20,name.length*4.2)-4,y:p.y+27,w:2*(Math.max(20,name.length*4.2)+4),h:28}];});
+for(const o of obstacles)zones.append(o.type==='circle'?elt('circle',{cx:o.x,cy:o.y,r:o.r,fill:'#ff5555','fill-opacity':'.14',stroke:'#ff7777','stroke-width':'.8'}):elt('rect',{x:o.x,y:o.y,width:o.w,height:o.h,fill:'#ff5555','fill-opacity':'.14',stroke:'#ff7777','stroke-width':'.8'}));
+document.querySelector('#zones').onchange=e=>zones.setAttribute('display',e.target.checked?'':'none');
+function blocked(p,origin,dest){if(p.x<5||p.x>455||p.y<5||p.y>425)return true;return obstacles.some(o=>o.id!==origin&&o.id!==dest&&(o.type==='circle'?Math.hypot(p.x-o.x,p.y-o.y)<=o.r+2:p.x>=o.x-2&&p.x<=o.x+o.w+2&&p.y>=o.y-2&&p.y<=o.y+o.h+2));}
+function clearSegment(a,b,origin,dest){const n=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/1.5);for(let i=0;i<=n;i++)if(blocked({x:a.x+(b.x-a.x)*i/n,y:a.y+(b.y-a.y)*i/n},origin,dest))return false;return true;}
+// A* generates deterministic alternative candidates; string-pulling and rounded
+// quadratic corners are accepted only after collision testing the actual curve.
+function route(origin,dest,lane=0){const A=position(origin),B=position(dest),step=5,cols=93,rows=87;const idx=(x,y)=>y*cols+x,xy=k=>({x:(k%cols)*step,y:Math.floor(k/cols)*step});const start=idx(Math.round(A.x/step),Math.round(A.y/step)),goal=idx(Math.round(B.x/step),Math.round(B.y/step));const dist=new Float64Array(cols*rows);dist.fill(Infinity);dist[start]=0;const prev=new Int32Array(cols*rows);prev.fill(-1);let open=[start],closed=new Uint8Array(cols*rows);const side=lane===0?0:(lane%2?1:-1)*Math.ceil(lane/2);const score=k=>{let p=xy(k);return dist[k]+Math.hypot(p.x-B.x,p.y-B.y)};while(open.length){let bi=0;for(let i=1;i<open.length;i++)if(score(open[i])<score(open[bi]))bi=i;const k=open.splice(bi,1)[0];if(closed[k])continue;if(k===goal)break;closed[k]=1;const p=xy(k);for(const [dx,dy] of [[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]){let x=k%cols+dx,y=Math.floor(k/cols)+dy;if(x<1||x>=cols-1||y<1||y>=rows-1)continue;let n=idx(x,y),q=xy(n);if(closed[n]||!clearSegment(p,q,origin,dest))continue;const cross=((q.x-A.x)*(B.y-A.y)-(q.y-A.y)*(B.x-A.x))/(Math.hypot(B.x-A.x,B.y-A.y)||1);const desired=side*28;const bias=Math.min(1,Math.abs(cross-desired)/150)*.65;const center=Math.hypot(q.x-230,q.y-212)/240;const g=dist[k]+Math.hypot(dx,dy)*step*(1+bias+center*.12);if(g<dist[n]){dist[n]=g;prev[n]=k;open.push(n)}}}if(start!==goal&&prev[goal]<0)return null;let points=[B];for(let k=goal;k!==start;k=prev[k])points.push(xy(k));points.push(A);points.reverse();let reduced=[points[0]];for(let i=0;i<points.length-1;){let j=i+1;while(j+1<points.length&&Math.hypot(points[j+1].x-points[i].x,points[j+1].y-points[i].y)<46&&clearSegment(points[i],points[j+1],origin,dest))j++;reduced.push(points[j]);i=j;}
+// Trim the endpoints to their visible rims, without changing their stations.
+function trim(ps,r){const a=ps[0];while(ps.length>2&&Math.hypot(ps[1].x-a.x,ps[1].y-a.y)<r)ps.splice(1,1);const b=ps[1],d=Math.hypot(b.x-a.x,b.y-a.y);ps[0]={x:a.x+(b.x-a.x)*r/d,y:a.y+(b.y-a.y)*r/d};}trim(reduced,origin==='hermes'?43:26);reduced.reverse();trim(reduced,dest==='hermes'?43:26);reduced.reverse();
+// Keep the A* detour as straight segments rather than smoothing its bends.
+for(let i=1;i<reduced.length;i++)if(!clearSegment(reduced[i-1],reduced[i],origin,dest))return null;
+return `M${reduced[0].x} ${reduced[0].y}`+reduced.slice(1).map(p=>` L${p.x} ${p.y}`).join('');}
+
+// Vary the sampled guide with irregular offsets; only the tested line segments are rendered.
+function pathSamples(d){const nums=d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),vertices=[];for(let i=0;i<nums.length;i+=2)vertices.push({x:nums[i],y:nums[i+1]});const lengths=[],total=vertices.slice(1).reduce((n,p,i)=>{const len=Math.hypot(p.x-vertices[i].x,p.y-vertices[i].y);lengths.push(len);return n+len},0);return Array.from({length:21},(_,i)=>{let distance=total*i/20,j=0;while(j<lengths.length-1&&distance>lengths[j])distance-=lengths[j++];const t=lengths[j]?distance/lengths[j]:0,a=vertices[j],b=vertices[j+1];return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t}});}
+
+// Symmetric nearest-point distance compares geometry, not SVG command strings.
+function different(a,b){const directed=(x,y)=>Math.max(...x.map(p=>Math.min(...y.map(q=>Math.hypot(p.x-q.x,p.y-q.y)))));return Math.max(directed(a,b),directed(b,a))>=8;}
+function curved(origin,dest,offset){
+  const a=position(origin),z=position(dest),dx=z.x-a.x,dy=z.y-a.y,dist=Math.hypot(dx,dy),nx=-dy/dist,ny=dx/dist;
+  const b={x:a.x+dx/3+nx*offset,y:a.y+dy/3+ny*offset},c={x:a.x+2*dx/3+nx*offset,y:a.y+2*dy/3+ny*offset};
+  const rim=(p,q,r)=>{const d=Math.hypot(q.x-p.x,q.y-p.y);return {x:p.x+(q.x-p.x)*r/d,y:p.y+(q.y-p.y)*r/d}};
+  const start=rim(a,b,origin==='hermes'?43:26),end=rim(z,c,dest==='hermes'?43:26);
+  const sample=t=>{const u=1-t;return {x:u*u*u*start.x+3*u*u*t*b.x+3*u*t*t*c.x+t*t*t*end.x,y:u*u*u*start.y+3*u*u*t*b.y+3*u*t*t*c.y+t*t*t*end.y}};
+  // Use a visibly broken polyline; test the actual straight segments, not a curve.
+  const vertices=Array.from({length:8},(_,i)=>{const t=i/7,p=sample(t);if(i===0||i===7)return p;const jitter=Math.sin(i*7.31+offset*.19)*Math.min(13,dist*.055)*Math.sin(Math.PI*t);return {x:p.x+nx*jitter,y:p.y+ny*jitter}});
+  // A zero offset would be straight; skip it in favour of bent alternatives.
+  if(!offset)return null;
+  for(let i=1;i<vertices.length;i++)if(!clearSegment(vertices[i-1],vertices[i],origin,dest))return null;
+  const d=`M${vertices[0].x} ${vertices[0].y}`+vertices.slice(1).map(p=>` L${p.x} ${p.y}`).join('');
+  return {d,samples:pathSamples(d)};
+}
+// Routes are calculated in a worker; cycling spreads consecutive flights.
+const candidateCache=new Map();
+const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()};onmessage=e=>{const {key,origin,destination}=e.data;try{const paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,paths})}catch(error){postMessage({key,error:String(error)})}}`;
+let worker;try{worker=new Worker(URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'})))}catch(e){worker=null}
+const pendingRoutes=new Map();
+if(worker){worker.onmessage=e=>{const {key,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};worker.onerror=()=>{for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();worker.terminate();worker=null}};
+function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;if(!worker)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer});worker.postMessage({key,origin,destination});return promise}
+let generation=0;
+async function launch(){if(send.disabled)return;const origin=from.value,destination=to.value,key=origin+'→'+destination,id=++serial,epoch=generation;const sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);const record={origin,destination,pending:true};active.set(id,record);refresh();status.textContent+=' · #'+id+' расчёт маршрута';try{const options=await candidates(origin,destination);if(epoch!==generation||!active.has(id))return;const chosen=options[sequence%options.length],{d,lane}=chosen;const g=elt('g',{class:'flight','data-flight':id,'data-destination':destination,'data-origin':origin,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'});const color=destination==='memory'?'#a5e6dc':'#f0c595';const path=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5',opacity:'.35'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:(Math.round(3.8*(1-.27*k)*10)/10),fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:color,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});g.append(path,...dots,satellite);flights.append(g);const occupied=new Set([...active.values()].filter(f=>f.destination===destination&&!f.pending&&!f.returning).map(f=>f.slot));let slot=0;while(occupied.has(slot))slot++;const delay=sequence%8*140,duration=2000+Math.random()*3000,failed=Math.random()<.1;g.dataset.duration=duration;g.dataset.delay=delay;active.set(id,{g,path,dots,satellite,origin,destination,lane,slot,start:performance.now()+delay,duration,failed,returning:false});refresh()}catch(error){if(epoch!==generation)return;active.delete(id);outcomes.push('#'+id+' '+names[origin]+' → '+names[destination]+' — маршрут не построен: '+error.message);outcomes=outcomes.slice(-5);refresh()}}
+send.onclick=launch;
+function frame(now){let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=now-f.start;if(elapsed<0){for(const dot of f.dots)dot.style.display='none';f.satellite.style.display='none';continue}f.satellite.style.display='';if(elapsed>=f.duration&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';outcomes.push('#'+id+' '+names[f.origin]+' → '+names[f.destination]+(f.failed?' — ошибка':' — успешно'));outcomes=outcomes.slice(-5);changed=true}if(f.returning&&elapsed>=f.duration+800){f.g.remove();active.delete(id);changed=true;continue}for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?elapsed-f.duration:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&(f.returning||elapsed<800)?'':'none';const p=f.path.getPointAtLength(travel*f.path.getTotalLength());dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),radius=Math.min(f.destination==='hermes'?48:30,nearest/2-4.75),angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}if(changed)refresh();requestAnimationFrame(frame)}requestAnimationFrame(frame);refresh();
+})();
+</script><!-- Upstream license:
+MIT License
+
+Copyright (c) 2026 Aleksei Volodin
+Copyright (c) 2026 Hu White (Hermes desktop implementation)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Vendored renderer license:
+MIT License
+
+Copyright (c) 2026 Aleksei Volodin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--></body></html>
