@@ -122,5 +122,25 @@ ok(mod.__test.hintOf({ command: 'npm install ' + 'x'.repeat(60) }).length <= 28,
 const tree = pane.render()
 ok(tree && (typeof tree.t === 'function' || typeof tree.t === 'string'), 'pane render() returns an element tree')
 
+// Traverse actual element output, evaluating function components with stub hooks.
+function elements(node, out = []) {
+  if (node == null || typeof node !== 'object') return out
+  if (Array.isArray(node)) { node.forEach(n => elements(n, out)); return out }
+  if (typeof node.t === 'function') return elements(node.t(node.p), out)
+  out.push(node)
+  elements(node.p?.children, out)
+  return out
+}
+fire('tool.start', { tool_id: 'visual-error', name: 'read_file' })
+fire('tool.complete', { tool_id: 'visual-error', name: 'read_file', result: { success: false } })
+const rendered = elements(tree)
+const texts = rendered.filter(x => x.t === 'text').map(x => x.p.children)
+ok(rendered.some(x => x.t === 'svg' && x.p['aria-label'] === 'Hermes activity map'), 'accessible map renders')
+ok(['YOU','FILES','SHELL','WEB','BROWSER','AGENTS','MEMORY','TOOLS','HERMES'].every(s => texts.includes(s)), 'all live stations and hub rendered')
+ok(texts.includes('75%'), 'usage event renders context percentage')
+ok(rendered.some(x => x.t === 'circle' && x.p.fill === '#f87171'), 'failed event renders fault marker')
+ok(rendered.some(x => x.t === 'animateMotion'), 'live tool events render animated pulses')
+ok(rendered.some(x => x.t === 'text' && x.p.children === '▤'), 'station renders file icon')
+
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`)
 process.exit(failures === 0 ? 0 : 1)
