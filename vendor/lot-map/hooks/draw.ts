@@ -7,6 +7,7 @@ import type { Palette } from './palette'
 import { STATIONS } from './setup'
 import type { Setup } from './setup'
 import type { Strings } from './text'
+import { ROUTES } from './routes'
 
 const W = 460
 const H = 430
@@ -61,10 +62,25 @@ function aside(a: Point, b: Point, off: number): [Point, Point] {
   return [{ x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy }]
 }
 
+function eventPath(e: Entry, shift: number, reverse = false): string | null {
+    const origin = e.from === "agents" ? "agents" : "hermes";
+    const options = ROUTES[`${shift}:${origin}:${e.station}`];
+    if (!options || !options.length) return null;
+    let hash = 2166136261;
+    for (const ch of String(e.id)) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619) >>> 0;
+    const path = options[hash % options.length];
+    if (!reverse) return path;
+    const points = path.match(/-?(?:\d+\.?\d*|\.\d+)/g)!.map(Number);
+    const pairs: string[] = [];
+    for (let i = 0; i < points.length; i += 2) pairs.push(`${points[i]} ${points[i+1]}`);
+    pairs.reverse();
+    return `M${pairs[0]}` + pairs.slice(1).map(p => ` L${p}`).join('');
+  }
+
 /** A pulse with a short tail behind it. A hollow one is a signal nobody asked for. */
-function pulse(a: Point, b: Point, color: string, age: number, radius: number, isHollow = false): string {
+function pulse(path: string | null, color: string, age: number, radius: number, isHollow = false): string {
+  if (!path) return ''
   // A negative begin carries on where the last drawing left off, so a redraw never restarts a flight.
-  const path = `M${n1(a.x)} ${n1(a.y)}L${n1(b.x)} ${n1(b.y)}`
   let out = ''
   for (let k = isHollow ? 0 : 2; k >= 0; k--) {
     const timing = `begin="${clock(k * 45 - age)}" dur="${clock(PULSE_MS)}" fill="freeze"`
@@ -279,16 +295,6 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
 
   // Spokes first, then whatever flies along them, then the nodes on top.
   // A spoke wears in with use: by the end of a session the map shows where the work went.
-  STATIONS.forEach((s, i) => {
-    const p = place(i, shift)
-    const a = edge(core, p, HUB)
-    const b = edge(p, core, NODE)
-    const worn = Math.min(1, Math.log2(1 + (board.counts[s.id] ?? 0)) / 7)
-    const line = `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
-    body += `${line} stroke="${c.spoke}"/>`
-    if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`
-  })
-
   const scene: Scene = { entries: recent, board, now, c, names: setup.t.stations, isStill, shift, spent: setup.contextCost ? board.spent : undefined }
   const drawn = STATIONS.map((s, i) => station(s, i, scene))
   body += drawn.map(d => d.under).join('')
@@ -300,29 +306,19 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
     const start = e.from === 'agents' ? agentsAt : core
     return [edge(start, p, e.from === 'agents' ? NODE : HUB), edge(p, start, NODE)]
   }
-  /** Pulses that share a spoke and a moment fly in lanes, five apart. */
-  const lane = (list: Entry[], e: Entry): number => {
-    const peers = list.filter(x => x.station === e.station && x.from === e.from)
-    return (peers.indexOf(e) - (peers.length - 1) / 2) * 5
-  }
-
-  for (const e of beams) {
-    const [a, b] = ends(e)
-    body += beam(a, b, isBad(e) ? c.red : tone(e)[0], now - e.startedAt, e.from === 'inbound')
-  }
   for (const e of flights) {
-    const [a, b] = aside(...ends(e), lane(flights, e))
+    const path = eventPath(e, shift, e.from === 'inbound')
     const age = now - e.startedAt
     const color = e.status === 'block' ? c.red : tone(e)[1]
     if (e.from === 'inbound') {
-      body += pulse(b, a, color, age, 3.8, true) + ripple(core, HUB - 2, color, age)
+      body += pulse(path, color, age, 3.8, true) + ripple(core, HUB - 2, color, age)
     } else {
-      body += pulse(a, b, color, age, 3.8) + ripple(place(indexOf(e.station), shift), NODE, color, age)
+      body += pulse(path, color, age, 3.8) + ripple(place(indexOf(e.station), shift), NODE, color, age)
     }
   }
   for (const e of returns) {
-    const [a, b] = aside(...ends(e), lane(returns, e))
-    body += pulse(b, a, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), 2.6)
+    const path = eventPath(e, shift, true)
+    body += pulse(path, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), 2.6)
   }
 
   body += drawn.map(d => d.over).join('')
@@ -331,6 +327,9 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
   // Identity-derived phase avoids changing existing orbits when calls start/end.
   for (const [i, s] of STATIONS.entries()) {
     const p = place(i, shift)
+    // Include the centre and every other island; leave room for the satellite itself.
+    const nearest = Math.min(Math.hypot(p.x - CX, p.y - CY), ...STATIONS.map((_, j) => j === i ? Infinity : Math.hypot(p.x - place(j, shift).x, p.y - place(j, shift).y)))
+    const orbitRadius = Math.max(0, Math.min(NODE + 6, nearest / 2 - 4.75))
     const calls = board.entries.filter(e => e.station === s.id && e.status === 'run' && e.satellite !== false).slice(0, 6)
     for (const e of calls) {
       let hash = 0
@@ -340,7 +339,7 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
       hash = (hash ^ (hash >>> 16)) >>> 0
       const lap = 7000
       const spin = `${n1(p.x)} ${n1(p.y)}`
-      const dot = `<circle cx="${n1(p.x)}" cy="${n1(p.y - NODE - 6)}" r="3" fill="${s.id === 'memory' ? c.memHot : c.hot}"/>`
+      const dot = `<circle cx="${n1(p.x)}" cy="${n1(p.y - orbitRadius)}" r="3" fill="${s.id === 'memory' ? c.memHot : c.hot}"/>`
       const key = escapeXml(String(e.id))
       body += isStill
         ? `<g data-lm-key="satellite-${key}" transform="rotate(${n1((hash % lap) * 360 / lap)} ${spin})">${dot}</g>`
