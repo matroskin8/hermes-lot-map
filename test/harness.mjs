@@ -41,7 +41,7 @@ const plugin = mod.default
 let failures = 0
 const ok = (cond, label) => { console.log((cond ? 'PASS' : 'FAIL') + '  ' + label); if (!cond) failures++ }
 
-ok(plugin && plugin.id === 'panoptes' && typeof plugin.register === 'function', 'default export is a HermesPlugin (id=panoptes)')
+ok(plugin && plugin.id === 'hermes-lot-map' && typeof plugin.register === 'function', 'default export is a HermesPlugin (id=hermes-lot-map)')
 
 // fake host context
 const contributions = []

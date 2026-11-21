@@ -1,13 +1,9 @@
-name: panoptes
-label: Panoptes
+name: hermes-lot-map
+label: Hermes Lot Map
 version: 0.1.0
 description: >-
-  Panoptes - a live station map pane for the Hermes desktop app. Every tool call,
-  model step and subagent lights up a station around an eye that watches whatever
-  is running: its iris doubles as the context gauge, its pupil glances toward the
-  station of each call and rests at center when idle. A status-bar chip keeps the
-  running count and session totals visible while the pane is collapsed. Single
-  file, plain ESM, no app rebuild.
+  Hermes Lot Map - a live station map for Hermes Desktop, adapted from Panoptes
+  and inspired by lot-map. Shows tool calls, agents and context usage.
 author: Hu White
 license: MIT
 requires_hermes: ">=0.21.7"

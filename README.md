@@ -1,4 +1,4 @@
-# Panoptes Lot
+# Hermes Lot Map
 
 A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and visually inspired by [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
 
@@ -17,7 +17,7 @@ The plugin listens to Desktop gateway events; it does not modify tool execution.
 
 The upstream plugin declares Hermes 0.21.7 or newer. Compatibility with a particular Desktop build and live session remains unverified for this adaptation.
 
-This repository is experimental and has not been live-tested. Do not use the upstream Panoptes installation command expecting it to install this adaptation. Review the source and verify compatibility before installation. A Desktop restart or plugin reload may be needed.
+This repository is experimental and has not been live-tested. Review the source and verify compatibility before installation. Its plugin ID is `hermes-lot-map`, distinct from the original `panoptes`. A Desktop restart or plugin reload may be needed.
 
 ## Tests
 

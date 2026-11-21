@@ -339,7 +339,7 @@ function Chip() {
       display: 'inline-flex', alignItems: 'center', gap: 5,
       fontSize: 11, color: run > 0 ? C.teal : TERT, padding: '0 6px', userSelect: 'none'
     },
-    title: 'Panoptes - the all-seeing pane',
+    title: 'Hermes Lot Map - live activity',
     children: [
       jsx('span', {
         style: {
@@ -358,8 +358,8 @@ function Chip() {
 export const __test = { board, classify, foldRows, hintOf }
 
 export default {
-  id: 'panoptes',
-  name: 'Panoptes',
+  id: 'hermes-lot-map',
+  name: 'Hermes Lot Map',
   description: 'A live map pane at the right edge: every tool call, model step and subagent lights up its station. Hermes-native reimplementation of the lot-map concept.',
 
   register(ctx) {
@@ -434,20 +434,20 @@ export default {
     ctx.register({
       id: 'pane',
       area: 'panes',
-      title: 'Panoptes',
+      title: 'Hermes Lot Map',
       data: {
         placement: 'main',
         dock: { pane: 'workspace', pos: 'right' },
         width: '320px',
-        tabTitleText: () => 'Panoptes'
+        tabTitleText: () => 'Hermes Lot Map'
       },
       render: () => jsx(LotMapPane, { motionPref })
     })
 
-    // Settings ▸ Plugins ▸ Panoptes (feature-detected for older hosts)
+    // Settings ▸ Plugins ▸ Hermes Lot Map (feature-detected for older hosts)
     ctx.registerSettingsPage?.({
       id: 'motion',
-      title: 'Panoptes',
+      title: 'Hermes Lot Map',
       render: function MotionSettings() {
         const prefs = useValue(motionPref)
         const reduced = prefs.motion === 'reduced'
