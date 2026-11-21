@@ -50,6 +50,10 @@ For a native Desktop connected to a remote backend, installing only on the backe
 
 The Desktop event tap fans in multiple sessions, profiles and connections. Events require an exact match against the SDK focused runtime ID, owner connection ID and owner profile; missing or ambiguous identity is ignored. The focus is window-level rather than independently bound to each pane. Switching focus clears the board and overlay. This filtering has not been verified with live Desktop event routing. Model names, tool names and aggregate activity are visible. Tool arguments, status text and child goals are not displayed or retained. Avoid sharing the pane if that visibility is unacceptable. Live Desktop event delivery, appearance and animation have not yet been verified. The adaptation has not received a security audit.
 
-## Attribution and license
+## Credits and license
 
-Based on [Panoptes](https://github.com/huwhitememes/panoptes) by Hu White, itself inspired by [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin. The original drawing code and its dependencies are vendored in `vendor/lot-map`; its MIT notice is in `vendor/lot-map/LICENSE`. Distributed under the **MIT License**; the upstream copyright and permission notices are preserved in [LICENSE](LICENSE).
+- [Panoptes](https://github.com/huwhitememes/panoptes) by **Hu White** — the foundation for the Hermes Desktop event bridge and activity feed.
+- [lot-map](https://github.com/alexeyw/lot-map) by **Aleksei Volodin** — the original renderer adapted for this project; Panoptes was also inspired by lot-map.
+- [matroskin8](https://github.com/matroskin8) — maintainer of Hermes Lot Map and its adaptation.
+
+The original lot-map drawing code and its dependencies are vendored in `vendor/lot-map`; its MIT notice is in [vendor/lot-map/LICENSE](vendor/lot-map/LICENSE). Hermes Lot Map is distributed under the **MIT License**; upstream copyright and permission notices are preserved in [LICENSE](LICENSE).
