@@ -11,7 +11,15 @@ A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/h
 - Activity feed with recent calls and durations.
 - A Hermes Desktop side pane and a reduced-motion setting inherited from Panoptes.
 
-The plugin listens to Desktop gateway events; it does not modify tool execution. The SVG drawing is the original lot-map renderer, bundled from the vendored MIT source at commit `5c5833d7380976fda671975d32fcec9c1bc3ef79`; the event bridge and feed are Panoptes-derived, not a feature-complete port. Unknown tools appear at Skills. Subagent lifecycle events are not shown because their correlation is not established.
+The plugin listens to Desktop gateway events; it does not modify tool execution. The SVG drawing is the original lot-map renderer, bundled from the vendored MIT source at commit `5c5833d7380976fda671975d32fcec9c1bc3ef79`; the event bridge and feed are Panoptes-derived, not a feature-complete port.
+
+### Event mapping and gaps
+
+- `tool.start` / `tool.complete`: file tools → Files; terminal, execute_code, process_manage → Shell; web_search/web_extract → Web; browser_exec/browser_cdp/browser_dialog/browser_vault → Browser; delegate_task and cronjob variants → Agents; memory, hindsight_* and lcm_* → Memory; clarify and todo variants → You; all others, including MCP and skill tools → Skills. The gateway may suppress tool events when tool progress is disabled. Missing IDs/session IDs cannot be correlated and are ignored.
+- `message.delta`, `reasoning.delta`, `thinking.delta`, `tool.generating` briefly animate Model; they indicate observed stream activity, not an exact inference lifecycle. `session.info.model` and `session.usage.model` supply the displayed model and switch animation. `message.complete` marks an answer.
+- `session.usage` supplies context_tokens/context_length, total_tokens and api_calls when present; `todo.updated` supplies only the count.
+- `subagent.start` and terminal-status `subagent.complete` show a child at Agents when both have the same subagent_id and route; older events without identity or status are omitted. Child goals, text, tool previews and results are not retained. Other child events are not mapped because they do not provide a matching tool lifecycle.
+- Hooks remain inactive: the inspected Desktop gateway event contract exposes no hook-execution event. No hook activity is inferred from unrelated events.
 
 ## Requirements and installation
 
@@ -28,7 +36,7 @@ For a native Desktop connected to a remote backend, installing only on the backe
 
 ## Privacy and limitations
 
-The Desktop event subscription is not verified to isolate the selected session, profile, or connection; events from other conversations may appear. Tool arguments and status text are not displayed or retained; tool names and aggregate activity remain visible. Avoid sharing the pane if that visibility is unacceptable. Live Desktop event delivery, appearance and animation have not yet been verified. The adaptation has not received a security audit.
+The Desktop event tap fans in multiple sessions, profiles and connections; the pane is not scoped to the selected conversation and events may be mixed. Completion correlation includes the event's available session, profile and connection tags, but that is not display isolation; absent tags and collisions remain a risk. Model names, tool names and aggregate activity are visible. Tool arguments, status text and child goals are not displayed or retained. Avoid sharing the pane if that visibility is unacceptable. Live Desktop event delivery, appearance and animation have not yet been verified. The adaptation has not received a security audit.
 
 ## Attribution and license
 

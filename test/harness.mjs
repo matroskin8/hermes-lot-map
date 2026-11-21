@@ -61,7 +61,7 @@ const ctx = {
 
 plugin.register(ctx)
 
-const fire = (type, payload) => (listeners[type] || []).forEach(fn => fn({ type, payload }))
+const fire = (type, payload, route = {}) => (listeners[type] || []).forEach(fn => fn({ type, payload, session_id: 'session-a', connectionId: 'host-a', profile: 'default', ...route }))
 const b = () => mod.__test.board.get()
 
 // 1. pane contribution docks right
@@ -90,6 +90,8 @@ const cls = mod.__test.classify
 ok(cls('web_search') === 'web' && cls('browser_exec') === 'browser' && cls('delegate_task') === 'agents'
    && cls('memory') === 'memory' && cls('skill_view') === 'skills' && cls('lcm_grep') === 'memory'
    && cls('clarify') === 'you' && cls('mcp__exa__search') === 'skills', 'classify covers Hermes tool names')
+ok(['hindsight_recall', 'hindsight_reflect', 'hindsight_retain'].every(n => cls(n) === 'memory'), 'Hindsight tools map to memory')
+ok(['browser_exec', 'browser_cdp', 'browser_dialog', 'browser_vault'].every(n => cls(n) === 'browser'), 'browser tools map to browser')
 
 // 4. context ring
 fire('session.usage', { context_tokens: 75000, context_length: 100000 })
@@ -105,6 +107,31 @@ fire('message.delta', { text: 'working' })
 ok(Date.now() - b().modelLiveAt < 100, 'message.delta marks the model live')
 fire('message.complete', {})
 ok(b().answeredAt > 0 && Object.keys(b().faults).length === 0, 'message.complete rings the answer and clears faults')
+
+// Real gateway model and subagent contracts; private payload text is ignored.
+fire('session.info', { model: 'provider/model-one', system_prompt: 'private-prompt' })
+ok(b().model === 'provider/model-one', 'session.info supplies model')
+fire('session.usage', { model: 'provider/model-two', total_tokens: 123, api_calls: 2 })
+ok(b().model === 'provider/model-two' && b().tokens === 123 && b().calls === 2, 'usage updates model and totals without context length')
+const modelSvg = mod.__test.MapSvg({ b: b(), now: Date.now(), motion: true }).p.dangerouslySetInnerHTML.__html
+ok(modelSvg.includes('provider/model-two'), 'model name reaches original SVG renderer')
+fire('subagent.start', { subagent_id: 'child-1', goal: 'private-goal' })
+fire('subagent.start', { subagent_id: 'child-2' })
+fire('subagent.start', { goal: 'private-no-id' })
+fire('subagent.complete', { subagent_id: 'child-2' })
+ok(b().entries.filter(e => e.kind === 'subagent' && e.status === 'run').length === 2, 'missing child identity or status is ignored')
+fire('subagent.complete', { subagent_id: 'child-1', status: 'failed' }, { session_id: 'session-b' })
+ok(b().entries.filter(e => e.kind === 'subagent' && e.status === 'run').length === 2, 'cross-session subagent completion ignored')
+fire('subagent.complete', { subagent_id: 'child-1', status: 'failed' })
+ok(b().entries.find(e => e.kind === 'subagent' && e.status === 'err'), 'matched subagent failure closes only its entry')
+ok(!JSON.stringify(b()).includes('private-goal') && !JSON.stringify(b()).includes('private-prompt'), 'subagent and model metadata privacy')
+fire('tool.start', { tool_id: 'same-id', name: 'terminal' })
+fire('tool.complete', { tool_id: 'same-id', name: 'terminal' }, { session_id: 'session-b' })
+ok(b().entries.find(e => e.toolId === 'same-id').status === 'run', 'cross-session tool completion ignored')
+fire('tool.complete', { name: 'terminal' })
+ok(b().entries.find(e => e.toolId === 'same-id').status === 'run', 'missing tool id cannot close arbitrary entry')
+fire('tool.complete', { tool_id: 'same-id', name: 'terminal' }, { connectionId: 'host-b' })
+ok(b().entries.find(e => e.toolId === 'same-id').status === 'run', 'cross-connection completion ignored')
 
 // 7. feed helpers
 const folded = mod.__test.foldRows([

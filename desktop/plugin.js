@@ -923,22 +923,17 @@ const FILE_TOOLS = new Set(['read_file', 'write_file', 'patch', 'search_files'])
 const SHELL_TOOLS = new Set(['terminal', 'execute_code', 'process_manage'])
 const WEB_TOOLS = new Set(['web_search', 'web_extract'])
 const AGENT_TOOLS = new Set(['delegate_task', 'cronjob', 'cronjob_manage', 'cronjob_list'])
-const TOOL_TOOLS = new Set([
-  'skill_view', 'skills_list', 'skill_manage', 'tool_search', 'tool_describe',
-  'tool_call', 'manage_connections', 'text_to_speech', 'vision_analyze',
-  'image_gen', 'video_analyze', 'video_gen'
-])
 const YOU_TOOLS = new Set(['clarify', 'todo_list', 'todo'])
 
-/** Map a Hermes tool name to a station id. Unknown/MCP tools land on TOOLS. */
+/** Map a Hermes tool name to a station id. Unknown/MCP tools land on Skills. */
 function classify(name) {
   const n = String(name || '')
   if (FILE_TOOLS.has(n)) return 'files'
   if (SHELL_TOOLS.has(n)) return 'shell'
   if (WEB_TOOLS.has(n)) return 'web'
-  if (n === 'browser_exec') return 'browser'
+  if (['browser_exec', 'browser_cdp', 'browser_dialog', 'browser_vault'].includes(n)) return 'browser'
   if (AGENT_TOOLS.has(n)) return 'agents'
-  if (n === 'memory' || n.startsWith('lcm_')) return 'memory'
+  if (n === 'memory' || n.startsWith('lcm_') || n.startsWith('hindsight_')) return 'memory'
   if (YOU_TOOLS.has(n)) return 'you'
   return 'skills'
 }
@@ -976,7 +971,9 @@ function freshBoard() {
     nowLine: '',            // status.update text
     todos: 0,               // todo.updated count
     tokens: null,           // cumulative session tokens (session.usage)
-    calls: 0                // cumulative api calls (session.usage)
+    calls: 0,               // cumulative api calls (session.usage)
+    model: null,
+    switchedAt: 0
   }
 }
 
@@ -992,11 +989,11 @@ const looksLikeError = (p) => {
 
 const touch = (fn) => board.set(fn(board.get()))
 
-function beginEntry(toolId, station, label, fromAgent) {
+function beginEntry(toolId, station, label, fromAgent, route, kind = 'tool') {
   touch((b) => ({
     ...b,
     entries: [...b.entries, {
-      id: newId(), toolId, station, label,
+      id: newId(), toolId, station, label, route, kind,
       status: 'run', t0: nowMs(), t1: 0, ms: 0,
       ...(fromAgent ? { fromAgent: true } : {})
     }].slice(-KEEP),
@@ -1004,14 +1001,10 @@ function beginEntry(toolId, station, label, fromAgent) {
   }))
 }
 
-function endEntry(toolId, err, ms) {
+function endEntry(toolId, err, ms, route, kind = 'tool') {
   touch((b) => {
     const entries = b.entries.slice()
-    let i = toolId ? entries.findIndex((e) => e.toolId === toolId && e.status === 'run') : -1
-    if (i < 0 && !toolId) {
-      i = -1
-      for (let j = entries.length - 1; j >= 0; j--) if (entries[j].status === 'run') { i = j; break }
-    }
+    const i = toolId && route ? entries.findIndex((e) => e.toolId === toolId && e.route === route && e.kind === kind && e.status === 'run') : -1
     let faults = b.faults
     if (i >= 0) {
       const e = entries[i]
@@ -1033,8 +1026,12 @@ function MapSvg({ b, now, motion }) {
     id: e.id, station: e.station, label: '', from: e.fromAgent ? 'agents' : 'core',
     startedAt: e.t0, endedAt: e.t1 || undefined, status: e.status
   }))
+  // A stream chunk is evidence of activity, not a model-call lifecycle.
+  if (b.modelLiveAt && now - b.modelLiveAt < 2000) entries.push({ id: 'model-live', station: 'model', label: '', from: 'core', startedAt: b.modelLiveAt, status: 'run' })
   if (b.answeredAt) entries.push({ id: 'answer', station: 'you', label: '', from: 'core', startedAt: b.answeredAt, status: 'ok', mark: 'done' })
   const originalBoard = { entries, counts: b.counts, faults: b.faults,
+    ...(b.model ? { model: b.model, switchedAt: b.switchedAt || undefined } : {}),
+    agents: b.entries.filter(e => e.kind === 'subagent' && e.status === 'run'),
     ...(b.ctxPct == null ? {} : { context: b.ctxPct * 100 }) }
   const setup = LotMapSetup.setupFrom({ coreName: 'HERMES', motion: motion ? 'full' : 'reduced' })
   const svg = LotMapOriginal.drawMap(originalBoard, now, setup)
@@ -1186,40 +1183,58 @@ export default {
     // tick for pulse/glow lifetimes
     ctx.setInterval(() => clock.set(nowMs()), 250)
 
+    // Never correlate across a session/connection/profile. Missing session IDs
+    // cannot be safely correlated. This does not filter the global event tap.
+    const routeOf = ev => ev?.session_id ? JSON.stringify([ev.connectionId ?? null, ev.profile ?? null, ev.session_id]) : null
+    const setModel = model => {
+      if (typeof model !== 'string' || !model || model.length > 200) return
+      touch(b => ({ ...b, model, switchedAt: b.model && b.model !== model ? nowMs() : b.switchedAt }))
+    }
     ctx.onEvent('tool.start', (ev) => {
       const p = ev && ev.payload
-      if (!p || !p.name) return
-      beginEntry(p.tool_id, classify(p.name), p.name)
+      if (!p || typeof p.name !== 'string' || !p.name || !p.tool_id || !routeOf(ev)) return
+      beginEntry(p.tool_id, classify(p.name), p.name, false, routeOf(ev))
     })
 
     ctx.onEvent('tool.complete', (ev) => {
       const p = ev && ev.payload
       if (!p || !p.name) return
-      endEntry(p.tool_id, looksLikeError(p), p.duration_s != null ? p.duration_s * 1000 : null)
+      endEntry(p.tool_id, looksLikeError(p), p.duration_s != null ? p.duration_s * 1000 : null, routeOf(ev))
     })
 
     ctx.onEvent('message.delta', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
+    ctx.onEvent('reasoning.delta', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
+    ctx.onEvent('thinking.delta', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
     ctx.onEvent('tool.generating', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
     ctx.onEvent('message.complete', () => touch((b) => ({
       ...b, modelLiveAt: 0, answeredAt: nowMs(), faults: {}
     })))
 
+    ctx.onEvent('session.info', ev => setModel(ev?.payload?.model))
     ctx.onEvent('session.usage', (ev) => {
       const p = ev && ev.payload
-      if (!p || !p.context_length) return
-      const u = p.usage || {}
-      const tok = u.total != null ? u.total
-        : (u.input || 0) + (u.output || 0) + (u.cache_read || 0) + (u.cache_write || 0)
+      if (!p) return
+      setModel(p.model)
       touch((b) => ({
         ...b,
-        ctxPct: Math.max(0, Math.min(1, (p.context_tokens || 0) / p.context_length)),
-        tokens: tok > 0 ? tok : b.tokens,
-        calls: p.api_calls != null ? p.api_calls : b.calls
+        ctxPct: Number.isFinite(p.context_tokens) && Number.isFinite(p.context_length) && p.context_length > 0 ? Math.max(0, Math.min(1, p.context_tokens / p.context_length)) : b.ctxPct,
+        tokens: Number.isFinite(p.total_tokens) ? p.total_tokens : b.tokens,
+        calls: Number.isFinite(p.api_calls) ? p.api_calls : b.calls
       }))
     })
 
-    // Subagent event payloads are not reliably correlatable here. Do not
-    // fabricate a completion or attach one to an unrelated running tool.
+    // Optional identity is required: older unidentifiable children are omitted.
+    ctx.onEvent('subagent.start', ev => {
+      const id = ev?.payload?.subagent_id, route = routeOf(ev)
+      if (typeof id !== 'string' || !id || !route) return
+      if (board.get().entries.some(e => e.kind === 'subagent' && e.toolId === id && e.route === route && e.status === 'run')) return
+      beginEntry(id, 'agents', 'subagent', false, route, 'subagent')
+    })
+    ctx.onEvent('subagent.complete', ev => {
+      const p = ev?.payload
+      if (!p || typeof p.subagent_id !== 'string' || !['completed', 'failed', 'error', 'timeout', 'interrupted'].includes(p.status)) return
+      endEntry(p.subagent_id, ['failed', 'error', 'timeout', 'interrupted'].includes(p.status), Number.isFinite(p.duration_seconds) ? p.duration_seconds * 1000 : null, routeOf(ev), 'subagent')
+    })
 
     ctx.onEvent('status.update', (ev) => {
       const p = ev && ev.payload

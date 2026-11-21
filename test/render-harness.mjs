@@ -48,7 +48,7 @@ const ctx = {
   registerSettingsPage: () => {}
 }
 plugin.register(ctx)
-const fire = (type, payload) => (listeners[type] || []).forEach((f) => f({ type, payload }))
+const fire = (type, payload) => (listeners[type] || []).forEach((f) => f({ type, payload, session_id: 'test-session' }))
 
 // give it live data like a real session
 fire('tool.start', { tool_id: 't1', name: 'terminal', args: { command: 'ls' } })
