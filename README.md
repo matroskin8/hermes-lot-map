@@ -1,6 +1,6 @@
 # Hermes Lot Map
 
-A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and visually inspired by [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
+A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and using the original renderer from [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
 
 > **Experimental:** events from multiple sessions or connections may be mixed; session isolation has not been verified.
 
@@ -11,7 +11,7 @@ A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/h
 - Activity feed with recent calls and durations.
 - A Hermes Desktop side pane and a reduced-motion setting inherited from Panoptes.
 
-The plugin listens to Desktop gateway events; it does not modify tool execution. It is a visual adaptation, not a feature-complete port of lot-map.
+The plugin listens to Desktop gateway events; it does not modify tool execution. The SVG drawing is the original lot-map renderer, bundled from the vendored MIT source at commit `5c5833d7380976fda671975d32fcec9c1bc3ef79`; the event bridge and feed are Panoptes-derived, not a feature-complete port. Unknown tools appear at Skills. Subagent lifecycle events are not shown because their correlation is not established.
 
 ## Requirements and installation
 
@@ -28,8 +28,8 @@ For a native Desktop connected to a remote backend, installing only on the backe
 
 ## Privacy and limitations
 
-The inherited event handler processes gateway events, including tool arguments used for short activity labels. Avoid assuming these labels are safe for screenshots or screen sharing. Review `desktop/plugin.js` before installing. The adaptation has not received a security audit.
+The Desktop event subscription is not verified to isolate the selected session, profile, or connection; events from other conversations may appear. Tool arguments and status text are not displayed or retained; tool names and aggregate activity remain visible. Avoid sharing the pane if that visibility is unacceptable. Live Desktop event delivery, appearance and animation have not yet been verified. The adaptation has not received a security audit.
 
 ## Attribution and license
 
-Based on [Panoptes](https://github.com/huwhitememes/panoptes) by Hu White, itself inspired by [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin. The visual adaptation was independently recreated from lot-map screenshots. Distributed under the **MIT License**; the upstream copyright and permission notices are preserved in [LICENSE](LICENSE).
+Based on [Panoptes](https://github.com/huwhitememes/panoptes) by Hu White, itself inspired by [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin. The original drawing code and its dependencies are vendored in `vendor/lot-map`; its MIT notice is in `vendor/lot-map/LICENSE`. Distributed under the **MIT License**; the upstream copyright and permission notices are preserved in [LICENSE](LICENSE).

@@ -88,19 +88,17 @@ ok(b().faults.files === 1, 'error counted as a fault on the station')
 // 3. station coverage for Hermes tool names
 const cls = mod.__test.classify
 ok(cls('web_search') === 'web' && cls('browser_exec') === 'browser' && cls('delegate_task') === 'agents'
-   && cls('memory') === 'memory' && cls('skill_view') === 'tools' && cls('lcm_grep') === 'memory'
-   && cls('clarify') === 'you' && cls('mcp__exa__search') === 'tools', 'classify covers Hermes tool names')
+   && cls('memory') === 'memory' && cls('skill_view') === 'skills' && cls('lcm_grep') === 'memory'
+   && cls('clarify') === 'you' && cls('mcp__exa__search') === 'skills', 'classify covers Hermes tool names')
 
 // 4. context ring
 fire('session.usage', { context_tokens: 75000, context_length: 100000 })
 ok(b().ctxPct === 0.75, 'session.usage fills the context ring (75%)')
 
-// 5. subagents
-fire('subagent.start', { name: 'researcher' })
-fire('subagent.tool', { name: 'web_search' })
+// 5. Uncorrelated subagent events must not close unrelated tools.
+fire('tool.start', { tool_id: 'ongoing', name: 'terminal' })
 fire('subagent.complete', {})
-const agentRows = b().entries.filter(e => e.station === 'agents')
-ok(agentRows.length >= 2 && agentRows.every(e => e.status !== 'run' || e === agentRows[agentRows.length - 1]), 'subagent events light AGENTS')
+ok(b().entries.find(e => e.toolId === 'ongoing').status === 'run', 'subagent completion does not alter unrelated tool')
 
 // 6. model + answer
 fire('message.delta', { text: 'working' })
@@ -134,13 +132,17 @@ function elements(node, out = []) {
 fire('tool.start', { tool_id: 'visual-error', name: 'read_file' })
 fire('tool.complete', { tool_id: 'visual-error', name: 'read_file', result: { success: false } })
 const rendered = elements(tree)
-const texts = rendered.filter(x => x.t === 'text').map(x => x.p.children)
-ok(rendered.some(x => x.t === 'svg' && x.p['aria-label'] === 'Hermes activity map'), 'accessible map renders')
-ok(['YOU','FILES','SHELL','WEB','BROWSER','AGENTS','MEMORY','TOOLS','HERMES'].every(s => texts.includes(s)), 'all live stations and hub rendered')
-ok(texts.includes('75%'), 'usage event renders context percentage')
-ok(rendered.some(x => x.t === 'circle' && x.p.fill === '#f87171'), 'failed event renders fault marker')
-ok(rendered.some(x => x.t === 'animateMotion'), 'live tool events render animated pulses')
-ok(rendered.some(x => x.t === 'text' && x.p.children === '▤'), 'station renders file icon')
+const map = rendered.find(x => x.p?.['aria-label'] === 'Hermes activity map')
+const svg = map?.p?.dangerouslySetInnerHTML?.__html || ''
+ok(!!map && svg.includes('<svg'), 'accessible original SVG renders')
+ok(svg.includes('viewBox="0 0 460 430"') && svg.includes('HERMES'), 'original dimensions and hub rendered')
+ok(svg.includes('75%'), 'usage event renders context percentage')
+ok(svg.includes('<animate'), 'live events render original SVG animation')
+ok(svg.includes('M-5.5 -8h7.5'), 'original file icon path rendered')
+fire('tool.start', { tool_id: 'private', name: 'terminal', args: { command: 'secret-value' } })
+ok(!JSON.stringify(b()).includes('secret-value'), 'tool arguments not retained')
+fire('tool.complete', { tool_id: 'missing', name: 'terminal' })
+ok(b().entries.find(e => e.toolId === 'private').status === 'run', 'unmatched completion does not close another call')
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`)
 process.exit(failures === 0 ? 0 : 1)

@@ -64,14 +64,15 @@ try {
   const html = RDS.renderToStaticMarkup(pane.render())
   console.log('RENDER OK — length', html.length)
   const checks = [
-    ['station label YOU', html.includes('YOU')],
-    ['station label BROWSER', html.includes('BROWSER')],
+    ['station label YOU', html.includes('>You</text>')],
+    ['station label BROWSER', html.includes('>Browser</text>')],
     ['svg present', html.includes('<svg')],
     ['feed row', html.includes('terminal')],
-    ['now line', html.includes('Running')],
+    ['status text not retained', !html.includes('Running: web_search')],
     ['task count', html.includes('tasks: 3')]
   ]
   for (const [label, ok] of checks) console.log((ok ? 'PASS' : 'FAIL') + '  ' + label)
+  if (checks.some(([, ok]) => !ok)) process.exitCode = 1
   console.log('--- first 500 chars ---')
   console.log(html.slice(0, 500))
 } catch (e) {
