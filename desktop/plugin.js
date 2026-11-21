@@ -979,7 +979,7 @@ function freshBoard() {
     counts: {},             // station -> total calls
     faults: {},             // station -> errors since last answer
     ctxPct: null,           // 0..1 context window fill
-    modelLiveAt: 0,         // last message.delta/generating ms
+
     answeredAt: 0,          // last message.complete ms
     nowLine: '',            // status.update text
     todos: 0,               // todo.updated count
@@ -1010,7 +1010,7 @@ function beginEntry(toolId, station, label, fromAgent, route, kind = 'tool') {
       status: 'run', t0: nowMs(), t1: 0, ms: 0,
       ...(fromAgent ? { fromAgent: true } : {})
     }].filter((e, i, all) => e.status === 'run' || i >= all.length - KEEP),
-    counts: { ...b.counts, [station]: (b.counts[station] || 0) + 1 }
+    counts: kind === 'model' ? b.counts : { ...b.counts, [station]: (b.counts[station] || 0) + 1 }
   }))
 }
 
@@ -1095,8 +1095,7 @@ function MapSvg({ b, now, motion }) {
     id: e.id, station: e.station, label: '', from: e.fromAgent ? 'agents' : 'core',
     startedAt: e.t0, endedAt: e.t1 || undefined, status: e.status, satellite: e.kind === 'tool'
   }))
-  // A stream chunk is evidence of activity, not a model-call lifecycle.
-  if (b.modelLiveAt && now - b.modelLiveAt < 2000) entries.push({ id: 'model-live-' + b.modelLiveAt, station: 'model', label: '', from: 'core', startedAt: b.modelLiveAt, status: 'run', satellite: false })
+
   if (b.answeredAt) entries.push({ id: 'answer-' + b.answeredAt, station: 'you', label: '', from: 'core', startedAt: b.answeredAt, status: 'ok', mark: 'done' })
   const originalBoard = { entries, counts: b.counts, faults: b.faults,
     ...(b.model ? { model: b.model, switchedAt: b.switchedAt || undefined } : {}),
@@ -1258,9 +1257,18 @@ export default {
       if (typeof model !== 'string' || !model || model.length > 200) return
       touch(b => ({ ...b, model, switchedAt: b.model && b.model !== model ? nowMs() : b.switchedAt }))
     }
+    // Only observed stream activity starts a model interval. It represents an
+    // observation, not an API request; message.start is a whole turn boundary.
+    const observeModel = ev => {
+      const route = routeOf(ev)
+      if (!route || board.get().entries.some(e => e.kind === 'model' && e.route === route && e.status === 'run')) return
+      beginEntry('model', 'model', 'model activity', false, route, 'model')
+    }
+    const finishModel = ev => endEntry('model', false, null, routeOf(ev), 'model')
     ctx.onEvent('tool.start', (ev) => {
       const p = ev && ev.payload
       if (!p || typeof p.name !== 'string' || !p.name || !p.tool_id || !routeOf(ev)) return
+      finishModel(ev)
       beginEntry(p.tool_id, classify(p.name), p.name, false, routeOf(ev))
     })
 
@@ -1270,13 +1278,11 @@ export default {
       endEntry(p.tool_id, looksLikeError(p), p.duration_s != null ? p.duration_s * 1000 : null, routeOf(ev))
     })
 
-    ctx.onEvent('message.delta', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
-    ctx.onEvent('reasoning.delta', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
-    ctx.onEvent('thinking.delta', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
-    ctx.onEvent('tool.generating', () => touch((b) => ({ ...b, modelLiveAt: nowMs() })))
-    ctx.onEvent('message.complete', () => touch((b) => ({
-      ...b, modelLiveAt: 0, answeredAt: nowMs(), faults: {}
-    })))
+    for (const type of ['message.delta', 'reasoning.delta', 'thinking.delta', 'tool.generating']) ctx.onEvent(type, observeModel)
+    ctx.onEvent('message.complete', ev => {
+      finishModel(ev)
+      touch(b => ({ ...b, answeredAt: nowMs(), faults: {} }))
+    })
 
     ctx.onEvent('session.info', ev => setModel(ev?.payload?.model))
     ctx.onEvent('session.usage', (ev) => {

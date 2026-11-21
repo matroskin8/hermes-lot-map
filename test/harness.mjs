@@ -104,8 +104,25 @@ ok(b().entries.find(e => e.toolId === 'ongoing').status === 'run', 'subagent com
 
 // 6. model + answer
 fire('message.delta', { text: 'working' })
-ok(Date.now() - b().modelLiveAt < 100, 'message.delta marks the model live')
+const model = b().entries.find(e => e.kind === 'model' && e.status === 'run')
+fire('reasoning.delta', { text: 'private-stream' })
+ok(model && b().entries.filter(e => e.kind === 'model' && e.status === 'run').length === 1 && b().entries.includes(model), 'stream chunks keep one stable model observation')
+fire('tool.start', { tool_id: 'model-boundary', name: 'terminal', args: { command: 'private-command' } })
+ok(b().entries.find(e => e.id === model.id).status === 'ok', 'tool start ends observed model interval')
+fire('tool.complete', { tool_id: 'model-boundary', name: 'terminal' })
+fire('thinking.delta', { text: 'private-thinking' })
+const model2 = b().entries.find(e => e.kind === 'model' && e.status === 'run')
+fire('message.complete', {}, { session_id: 'other' })
+ok(b().entries.find(e => e.id === model2.id).status === 'run', 'another session cannot end the observation')
 fire('message.complete', {})
+ok(b().entries.find(e => e.id === model2.id).status === 'ok', 'completion ends the observation')
+const beforeNoStream = b().entries.filter(e => e.kind === 'model').length
+fire('message.start', {})
+fire('tool.start', { tool_id: 'silent', name: 'terminal' })
+fire('tool.complete', { tool_id: 'silent', name: 'terminal' })
+fire('message.complete', { text: 'private-final' })
+ok(b().entries.filter(e => e.kind === 'model').length === beforeNoStream && !b().counts.model, 'no stream does not invent model activity or API call counts')
+ok(!JSON.stringify(b()).includes('private-stream') && !JSON.stringify(b()).includes('private-thinking') && !JSON.stringify(b()).includes('private-command') && !JSON.stringify(b()).includes('private-final'), 'stream, tool arguments and final text are not retained')
 ok(b().answeredAt > 0 && Object.keys(b().faults).length === 0, 'message.complete rings the answer and clears faults')
 
 // Real gateway model and subagent contracts; private payload text is ignored.
