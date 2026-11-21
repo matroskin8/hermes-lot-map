@@ -188,7 +188,7 @@ var LotMapOriginal = (() => {
     const span = isAlarm ? ALARM_MS : GLOW_MS;
     let under = "";
     if (isLit || isAlarm) {
-      under += running.length > 0 && !isAlarm ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".16"/>` : `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="0"><animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`;
+      under += isStill || running.length > 0 && !isAlarm ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".16"/>` : `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="0"><animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`;
     }
     if (running.length > 0) {
       const elapsed = Math.max(0, now - Math.min(...running.map((e) => e.startedAt)));
@@ -196,11 +196,11 @@ var LotMapOriginal = (() => {
       if (!isStill) {
         under += `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.3"><animate attributeName="r" values="${NODE};${NODE + 15}" ${beat}/><animate attributeName="opacity" values=".9;0" ${beat}/></circle>`;
       }
-      const hand = (r, width, lapMs, isOnce) => `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
+      const hand = (r, width, lapMs, isOnce) => isStill ? `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="${1 - (isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs) / lapMs}" transform="rotate(-90 ${x} ${y})"/>` : `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
       under += hand(NODE + 4, 2.2, 6e4, false) + hand(NODE + 8, 1.2, 6e5, true);
     }
     const lit = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.2"`;
-    const cooling = running.length > 0 ? `${lit}/>` : isLit || isAlarm ? `${lit} opacity="0"><animate attributeName="opacity" values="1;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>` : "";
+    const cooling = running.length > 0 ? `${lit}/>` : isStill && (isLit || isAlarm) ? `${lit}/>` : isLit || isAlarm ? `${lit} opacity="0"><animate attributeName="opacity" values="1;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>` : "";
     const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === "memory" && count > 0 ? main : c.ash;
     const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round"`;
     let over = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/><text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`;
@@ -270,7 +270,7 @@ var LotMapOriginal = (() => {
       const p = place(i, shift);
       const nearest = Math.min(Math.hypot(p.x - CX, p.y - CY), ...STATIONS.map((_, j) => j === i ? Infinity : Math.hypot(p.x - place(j, shift).x, p.y - place(j, shift).y)));
       const orbitRadius = Math.max(0, Math.min(NODE + 6, nearest / 2 - 4.75));
-      const calls = (board.overlayFlights ? [] : board.entries).filter((e) => e.station === s.id && e.status === "run" && e.satellite !== false).slice(0, 6);
+      const calls = (board.overlayFlights && !isStill ? [] : board.entries).filter((e) => e.station === s.id && e.status === "run" && e.satellite !== false).slice(0, 6);
       for (const e of calls) {
         let hash = 0;
         for (const ch of String(e.id)) hash = Math.imul(hash, 31) + ch.charCodeAt(0) >>> 0;
@@ -920,7 +920,14 @@ const position=id=>id==='hermes'?{x:230,y:212}:point(stations.findIndex(x=>x[0]=
 const obstacles=locations.flatMap(([id,name])=>{const p=position(id);if(id==='hermes')return [{id,type:'circle',x:p.x,y:p.y,r:55}];return [{id,type:'circle',x:p.x,y:p.y,r:36},{id,type:'rect',x:p.x-Math.max(20,name.length*4.2)-4,y:p.y+27,w:2*(Math.max(20,name.length*4.2)+4),h:28}];});
 const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
 function blocked(p,origin,dest){if(p.x<5||p.x>455||p.y<5||p.y>425)return true;return obstacles.some(o=>o.id!==origin&&o.id!==dest&&(o.type==='circle'?Math.hypot(p.x-o.x,p.y-o.y)<=o.r+2:p.x>=o.x-2&&p.x<=o.x+o.w+2&&p.y>=o.y-2&&p.y<=o.y+o.h+2));}
-function clearSegment(a,b,origin,dest){const n=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/1.5);for(let i=0;i<=n;i++)if(blocked({x:a.x+(b.x-a.x)*i/n,y:a.y+(b.y-a.y)*i/n},origin,dest))return false;return true;}
+function clearSegment(a,b,origin,dest){
+ if(a.x<5||a.x>455||a.y<5||a.y>425||b.x<5||b.x>455||b.y<5||b.y>425)return false;
+ const dx=b.x-a.x,dy=b.y-a.y;
+ for(const o of obstacles){if(o.id===origin||o.id===dest)continue;
+  if(o.type==='circle'){const t=Math.max(0,Math.min(1,((o.x-a.x)*dx+(o.y-a.y)*dy)/(dx*dx+dy*dy||1)));if(Math.hypot(a.x+t*dx-o.x,a.y+t*dy-o.y)<=o.r+2)return false;}
+  else{let lo=0,hi=1;for(const [v,d,min,max] of [[a.x,dx,o.x-2,o.x+o.w+2],[a.y,dy,o.y-2,o.y+o.h+2]]){if(!d){if(v<min||v>max){lo=1;hi=0;break}}else{let t1=(min-v)/d,t2=(max-v)/d;if(t1>t2)[t1,t2]=[t2,t1];lo=Math.max(lo,t1);hi=Math.min(hi,t2);if(lo>hi)break}}if(lo<=hi)return false;}
+ }return true;
+}
 // A* generates deterministic alternative candidates; string-pulling and rounded
 // quadratic corners are accepted only after collision testing the actual curve.
 function route(origin,dest,lane=0){const A=position(origin),B=position(dest),step=5,cols=93,rows=87;const idx=(x,y)=>y*cols+x,xy=k=>({x:(k%cols)*step,y:Math.floor(k/cols)*step});const start=idx(Math.round(A.x/step),Math.round(A.y/step)),goal=idx(Math.round(B.x/step),Math.round(B.y/step));const dist=new Float64Array(cols*rows);dist.fill(Infinity);dist[start]=0;const prev=new Int32Array(cols*rows);prev.fill(-1);let open=[start],closed=new Uint8Array(cols*rows);const side=lane===0?0:(lane%2?1:-1)*Math.ceil(lane/2);const score=k=>{let p=xy(k);return dist[k]+Math.hypot(p.x-B.x,p.y-B.y)};while(open.length){let bi=0;for(let i=1;i<open.length;i++)if(score(open[i])<score(open[bi]))bi=i;const k=open.splice(bi,1)[0];if(closed[k])continue;if(k===goal)break;closed[k]=1;const p=xy(k);for(const [dx,dy] of [[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]){let x=k%cols+dx,y=Math.floor(k/cols)+dy;if(x<1||x>=cols-1||y<1||y>=rows-1)continue;let n=idx(x,y),q=xy(n);if(closed[n]||!clearSegment(p,q,origin,dest))continue;const cross=((q.x-A.x)*(B.y-A.y)-(q.y-A.y)*(B.x-A.x))/(Math.hypot(B.x-A.x,B.y-A.y)||1);const desired=side*28;const bias=Math.min(1,Math.abs(cross-desired)/150)*.65;const center=Math.hypot(q.x-230,q.y-212)/240;const g=dist[k]+Math.hypot(dx,dy)*step*(1+bias+center*.12);if(g<dist[n]){dist[n]=g;prev[n]=k;open.push(n)}}}if(start!==goal&&prev[goal]<0)return null;let points=[B];for(let k=goal;k!==start;k=prev[k])points.push(xy(k));points.push(A);points.reverse();let reduced=[points[0]];for(let i=0;i<points.length-1;){let j=i+1;while(j+1<points.length&&Math.hypot(points[j+1].x-points[i].x,points[j+1].y-points[i].y)<46&&clearSegment(points[i],points[j+1],origin,dest))j++;reduced.push(points[j]);i=j;}
@@ -950,36 +957,45 @@ function curved(origin,dest,offset){
   return {d,samples:pathSamples(d)};
 }
 
+const orbitGeometry=new Map(locations.map(([id])=>{const p=position(id),nearest=Math.min(...locations.filter(([other])=>other!==id).map(([other])=>{const q=position(other);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75);return [id,{p,outer,capacity:Math.max(0,Math.floor((outer-9.5)/9.5)+1)}]}));
 function create(svg, onChange=()=>{}) {
 // Routes are calculated in a worker; cycling spreads consecutive flights.
 const candidateCache=new Map();
-const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()};onmessage=e=>{const {key,origin,destination}=e.data;try{const paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,paths})}catch(error){postMessage({key,error:String(error)})}}`;
-let worker;try{const url=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));try{worker=new Worker(url)}finally{URL.revokeObjectURL(url)}}catch(e){worker=null}
+const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()};onmessage=e=>{const {key,requestId,origin,destination}=e.data;try{const paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,requestId,paths})}catch(error){postMessage({key,requestId,error:String(error)})}}`;
+let worker=null, nextRequestId=0;
 const pendingRoutes=new Map();
-if(worker){worker.onmessage=e=>{const {key,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};worker.onerror=()=>{for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();worker.terminate();worker=null}};
-function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;if(!worker)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer});worker.postMessage({key,origin,destination});return promise}
+function ensureWorker(){
+ if(worker)return worker;
+ try{const url=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));try{worker=new Worker(url)}finally{URL.revokeObjectURL(url)}}catch(e){worker=null;return null}
+ const current=worker;
+ current.onmessage=e=>{const {key,requestId,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending||pending.requestId!==requestId)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!Array.isArray(paths)||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};
+ current.onerror=()=>{if(worker!==current)return;for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();current.terminate();worker=null};
+ return current;
+}
+function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;const current=ensureWorker();if(!current)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b}),requestId=++nextRequestId;const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p&&p.requestId===requestId){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer,requestId});try{current.postMessage({key,requestId,origin,destination})}catch(error){clearTimeout(timer);pendingRoutes.delete(key);for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(error)}pendingRoutes.clear();current.terminate();worker=null;reject(error)}return promise}
 
 const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
-const active=new Map(), seen=new Set(), routeSequences=new Map(); let dead=false, raf;
-function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false}) {
+const active=new Map(), seen=new Set(), unknownSeen=new Set(), routeSequences=new Map(); let dead=false, raf;
+function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false,unknown=false}) {
+  if(!active.has(id)&&unknownSeen.has(id)&&endedAt!=null&&!unknown){seen.delete(id);unknownSeen.delete(id)}
   if(dead||active.has(id)||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
-  seen.add(id); if(seen.size>4096)seen.delete(seen.values().next().value); const key=origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
-  const f={id,origin,destination,startedAt,endedAt,failed,pending:true};active.set(id,f);onChange();
+  seen.add(id); if(unknown)unknownSeen.add(id); if(seen.size>4096){const oldest=seen.values().next().value;seen.delete(oldest);unknownSeen.delete(oldest)} const key=origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
+  const f={id,origin,destination,startedAt,endedAt,failed,unknown,pending:true};active.set(id,f);onChange();
   candidates(origin,destination).then(options=>{if(dead||!active.has(id))return;
-    const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color=destination==='memory'?'#a5e6dc':'#f0c595', satelliteColor=destination==='memory'?'#a5e6dc':'#f0c595';
-    const path=elt('path',{d,fill:'none',stroke:'none'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:satelliteColor,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});
+    const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color='#f0c595', satelliteColor=color;
+    const path=elt('path',{d,fill:'none',stroke:'none'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:satelliteColor,stroke:'#e1ac6e','stroke-width':1.5});
     const out=elt('g',{class:'outbound-trail'}),back=elt('g',{class:'response-trail'});
     const segment=(group,color,i)=>{const p=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5','data-segment':i,opacity:0});group.append(p);return p};
     const outbound=Array.from({length:40},(_,i)=>segment(out,color,i)), response=Array.from({length:40},(_,i)=>segment(back,failed?'#e8654f':'#a8d9b5',i));
     g.append(path,out,back,...dots,satellite);flights.append(g);
     Object.assign(f,{pending:false,g,path,dots,satellite,outbound,response,slot:null,returning:false});onChange();
-  }).catch(error=>{if(dead)return;active.delete(id);onChange(error)});
+  }).catch(error=>{if(dead)return;active.delete(id);seen.delete(id);onChange(error)});
 }
-function end(id,endedAt=Date.now(),failed=false){const f=active.get(id);if(f&&f.endedAt==null){f.endedAt=endedAt;f.failed=failed}}
+function end(id,endedAt=Date.now(),failed=false,unknown=false){const f=active.get(id);if(f&&(f.endedAt==null||(f.unknown&&!unknown))){f.endedAt=endedAt;f.failed=failed;f.unknown=unknown;if(unknown)unknownSeen.add(id);else unknownSeen.delete(id);if(f.returning)f.returning=false}}
 function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=wall-f.startedAt;
  const returnAt=f.endedAt==null?Infinity:Math.max(f.startedAt+800,f.endedAt);
  if(elapsed<0){f.g.style.display='none';continue}f.g.style.display='';
- if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';changed=true}
+ if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
  if(wall>=returnAt+800+60000){f.g.remove();active.delete(id);changed=true;continue}
  const length=f.path.getTotalLength(), n=f.outbound.length, outProgress=Math.max(0,Math.min(1,elapsed/800)), backProgress=Math.max(0,Math.min(1,(wall-returnAt)/800));
  // Each small interval is clipped on the original path: no straight-line shortcuts at bends.
@@ -991,7 +1007,7 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  }
  for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-returnAt:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&age<800+k*45?'':'none';const p=f.path.getPointAtLength(travel*length);dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
  f.satellite.style.display=f.returning?'none':'';
- if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),spacing=9.5,capacity=Math.max(0,Math.floor((outer-9.5)/spacing)+1);
+ if(!f.returning){const {p,outer,capacity}=orbitGeometry.get(f.destination),spacing=9.5;
  // Fixed concentric slots never shift when other calls finish. Overflow waits
  // invisibly for a slot instead of overlapping another orbit or crossing the cap.
  if(f.slot===null){const occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!==null&&x.slot!==undefined).map(x=>x.slot));let slot=0;while(slot<capacity&&occupied.has(slot))slot++;if(slot<capacity)f.slot=slot}

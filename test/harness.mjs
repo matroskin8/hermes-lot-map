@@ -19,6 +19,7 @@ export function atom(init) {
     subscribe: (f) => { subs.add(f); return () => subs.delete(f) }
   }
 }
+export const host = { state: { focusedSessionId: atom('session-a'), focusedSessionOwner: atom({connectionId:'host-a',profile:'default'}) } }; globalThis.__host = host
 export const useValue = (a) => a.get()
 export const cn = (...xs) => xs.filter(Boolean).join(' ')
 `
@@ -29,7 +30,7 @@ export const jsxs = jsx
 
 let rewritten = src
   .replace(/from '@hermes\/plugin-sdk'/, `from ${JSON.stringify(dataUrl(sdkStub))}`)
-  .replace(/from 'react'/, `from ${JSON.stringify(dataUrl('export const useRef=()=>({current:null}); export const useLayoutEffect=f=>globalThis.__mapEffects.push(f)'))}`)
+  .replace(/from 'react'/, `from ${JSON.stringify(dataUrl('export const useState=v=>[v,()=>{}]; export const useRef=()=>({current:null}); export const useLayoutEffect=f=>globalThis.__mapEffects.push(f)'))}`)
   .replace(/from 'react\/jsx-runtime'/, `from ${JSON.stringify(dataUrl(jsxStub))}`)
 
 if (rewritten === src) { console.error('FAIL: specifier rewrite did not apply'); process.exit(1) }
@@ -136,7 +137,7 @@ const svgFor = b => {
   const host = { ownerDocument: { createElement: () => ({ set innerHTML(value) { html = value }, content: { firstElementChild: {} } }) }, firstElementChild: null, appendChild: () => {} }
   globalThis.__mapEffects = []
   const node = mod.__test.MapSvg({ b, now: Date.now(), motion: true })
-  node.p.ref.current = host
+  node.p.children[0].p.ref.current = host
   globalThis.__mapEffects[0]()
   return html
 }
@@ -212,6 +213,33 @@ fire('tool.start', { tool_id: 'private', name: 'terminal', args: { command: 'sec
 ok(!JSON.stringify(b()).includes('secret-value'), 'tool arguments not retained')
 fire('tool.complete', { tool_id: 'missing', name: 'terminal' })
 ok(b().entries.find(e => e.toolId === 'private').status === 'run', 'unmatched completion does not close another call')
+
+// Focus changes clear all visible state, including model, counts and lingering entries.
+const focus = globalThis.__host.state
+focus.focusedSessionId.set('session-b')
+ok(b().entries.length === 0 && b().model === null && Object.keys(b().counts).length === 0, 'focus change clears board')
+fire('session.info', {model:'private-other'}, {session_id:'session-a'})
+fire('todo.updated', {todos:[1]}, {session_id:'session-a'})
+fire('message.complete', {}, {session_id:'session-a'})
+ok(!b().model && !b().todos && !b().answeredAt, 'all other-session event types are filtered')
+fire('tool.start', {tool_id:'b',name:'terminal'}, {session_id:'session-b'})
+ok(b().entries.length === 1, 'focused event accepted')
+focus.focusedSessionOwner.set(null)
+ok(!b().entries.length, 'ambiguous owner clears state')
+fire('tool.start', {tool_id:'no-owner',name:'terminal'}, {session_id:'session-b'})
+ok(!b().entries.length, 'ambiguous owner fails closed')
+focus.focusedSessionOwner.set({connectionId:'host-a',profile:'default'})
+fire('tool.start', {tool_id:'no-source',name:'terminal'}, {session_id:'session-b',connectionId:undefined})
+ok(!b().entries.length, 'missing source fails closed')
+fire('tool.start', {tool_id:'long',name:'terminal'}, {session_id:'session-b'})
+let entry=b().entries[0]; const originalNow=Date.now
+Date.now=()=>entry.t0 + 6*60*60*1000-1; timers[0]()
+ok(b().entries[0].status==='run','long active call remains running before six hours')
+Date.now=()=>entry.t0 + 6*60*60*1000; timers[0]()
+ok(b().entries[0].status==='unknown' && !Object.keys(b().faults).length,'lost completion becomes unknown without fault')
+fire('tool.complete', {tool_id:'long',name:'terminal'}, {session_id:'session-b'})
+ok(b().entries[0].status==='ok','late completion replaces unknown')
+Date.now=originalNow
 
 console.log(failures === 0 ? '\nALL CHECKS PASSED' : `\n${failures} CHECK(S) FAILED`)
 process.exit(failures === 0 ? 0 : 1)

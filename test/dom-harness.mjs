@@ -6,9 +6,9 @@ const require = createRequire(import.meta.url)
 const { JSDOM } = require(process.env.JSDOM_PATH || 'jsdom')
 const source = readFileSync(new URL('../desktop/plugin.js', import.meta.url), 'utf8')
 const url = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
-const sdk = `export const atom = x => ({get:()=>x,set:v=>x=v}); export const useValue = x => x.get()`
+const sdk = `export const host = {}; export const atom = x => ({get:()=>x,set:v=>x=v}); export const useValue = x => x.get()`
 const jsx = `export const jsx=(t,p)=>({t,p}); export const jsxs=jsx`
-const mod = await import(url(source.replace("from '@hermes/plugin-sdk'", `from '${url(sdk)}'`).replace("from 'react'", `from '${url("export const useRef=()=>({}); export const useLayoutEffect=()=>{}")}'`).replace("from 'react/jsx-runtime'", `from '${url(jsx)}'`)))
+const mod = await import(url(source.replace("from '@hermes/plugin-sdk'", `from '${url(sdk)}'`).replace("from 'react'", `from '${url("export const useState=v=>[v,()=>{}]; export const useRef=()=>({}); export const useLayoutEffect=()=>{}")}'`).replace("from 'react/jsx-runtime'", `from '${url(jsx)}'`)))
 const { updateMap, drawMap, setupFrom } = mod.__test
 const document = new JSDOM('<!doctype html><div id="host"></div>').window.document
 const host = document.querySelector('#host')
@@ -17,6 +17,12 @@ const one = { id: 'one', station: 'shell', from: 'core', startedAt: 10000, statu
 const two = { id: 'two', station: 'shell', from: 'core', startedAt: 10250, status: 'run' }
 const board = entries => ({ entries, counts: { shell: entries.length }, faults: {} })
 const draw = (entries, now, options = setup) => drawMap(board(entries), now, options)
+// Empty history must never invent rays, including static/reduced-motion rendering.
+for(const motion of ['full','reduced']) for(const overlayFlights of [false,true]) {
+ const markup=drawMap({...board([]),overlayFlights},10000,setupFrom({coreName:'HERMES',motion}))
+ const probe=document.createElement('div');probe.innerHTML=markup
+ assert.equal(probe.querySelectorAll('[data-lm-key^="beam-"], [data-lm-key^="flight-"], [data-lm-key^="return-"]').length,0,`${motion}/${overlayFlights}: empty rays`)
+}
 updateMap(host, draw([one], 10000))
 const svg = host.firstElementChild
 svg.getCurrentTime = () => 0.25
@@ -84,8 +90,9 @@ for (const [i, station] of stations.entries()) {
   assert.equal(ten.getAttribute('fill'), 'freeze')
   const late = document.createElement('div')
   updateMap(late, draw([running], 650000, setupFrom({ motion: 'reduced' })))
-  assert.equal(late.querySelector('[data-lm-key="clock-60000"] animate').getAttribute('begin'), '-40.000s', station)
-  assert.equal(late.querySelector('[data-lm-key="clock-600000"] animate').getAttribute('begin'), '-600.000s', station)
+  assert.ok(Math.abs(Number(late.querySelector('[data-lm-key="clock-60000"]').getAttribute('stroke-dashoffset')) - 1/3) < 1e-9, station)
+  assert.equal(late.querySelector('[data-lm-key="clock-600000"]').getAttribute('stroke-dashoffset'), '0', station)
+  assert.equal(late.querySelector('animate, animateTransform, animateMotion'), null, station)
   h.firstElementChild.getCurrentTime = () => 1
   updateMap(h, draw([{ ...running, status: 'ok', endedAt: 86000 }], 86000))
   assert.equal(h.querySelector('[data-lm-key="clock-60000"]'), null, station)

@@ -13,7 +13,7 @@ globalThis.document = dom.window.document
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window)
 globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window)
-globalThis.Worker = class { postMessage({key}) { queueMicrotask(() => this.onmessage({data:{key,paths:[{d:'M230 169 L300 320',lane:55},{d:'M220 170 L310 320',lane:-55}]}})) } terminate() {} }
+globalThis.Worker = class { postMessage({key,requestId}) { queueMicrotask(() => this.onmessage({data:{key,requestId,paths:[{d:'M230 169 L300 320',lane:55},{d:'M220 170 L310 320',lane:-55}]}})) } terminate() {} }
 globalThis.URL.createObjectURL = () => 'blob:stub'
 dom.window.SVGElement.prototype.getTotalLength = () => 100
 dom.window.SVGElement.prototype.getPointAtLength = n => ({x:n,y:n})
@@ -22,19 +22,30 @@ Date.now = () => time
 const React = await import(pathToFileURL(root + '/node_modules/react/index.js'))
 const { createRoot } = await import(pathToFileURL(root + '/node_modules/react-dom/client.js'))
 const url = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
-const sdk = `import { atom } from ${JSON.stringify(pathToFileURL(root + '/node_modules/nanostores/index.js').href)}; import React from ${JSON.stringify(pathToFileURL(root + '/node_modules/react/index.js').href)}; export {atom}; export function useValue(a){ return React.useSyncExternalStore(a.subscribe,a.get,a.get) }`
+const sdk = `import { atom } from ${JSON.stringify(pathToFileURL(root + '/node_modules/nanostores/index.js').href)}; import React from ${JSON.stringify(pathToFileURL(root + '/node_modules/react/index.js').href)}; export {atom}; export const host=globalThis.__testHost={state:{focusedSessionId:atom("a"),focusedSessionOwner:atom({connectionId:"host",profile:"default"})}}; export function useValue(a){ return React.useSyncExternalStore(a.subscribe,a.get,a.get) }`
 const source = readFileSync(new URL('../desktop/plugin.js', import.meta.url), 'utf8')
 const mod = await import(url(source.replace("from '@hermes/plugin-sdk'", `from '${url(sdk)}'`).replace("from 'react'", `from '${pathToFileURL(root + '/node_modules/react/index.js').href}'`).replace("from 'react/jsx-runtime'", `from '${pathToFileURL(root + '/node_modules/react/jsx-runtime.js').href}'`)))
-const listeners = {}, contributions = []
+const listeners = {}, contributions = []; let settingsPage
 let tick
-mod.default.register({ register: c => contributions.push(c), onEvent: (t,f) => { (listeners[t] ||= []).push(f) }, setInterval: f => { tick = f }, storage: { get: (k,v) => v, set() {} }, registerSettingsPage() {} })
-const fire = (type, payload = {}, route = {}) => listeners[type]?.forEach(f => f({ type, payload, session_id: 'a', connectionId: 'host', ...route }))
+mod.default.register({ register: c => contributions.push(c), onDispose() {}, onEvent: (t,f) => { (listeners[t] ||= []).push(f) }, setInterval: f => { tick = f }, storage: { get: (k,v) => v, set() {} }, registerSettingsPage(page) { settingsPage = page } })
+const fire = (type, payload = {}, route = {}) => listeners[type]?.forEach(f => f({ type, payload, session_id: 'a', connectionId: 'host', profile: 'default', ...route }))
 const app = createRoot(document.querySelector('#app'))
 await React.act(() => app.render(contributions.find(c => c.area === 'panes').render()))
 await React.act(() => fire('message.delta', {text:'secret-stream'}))
 let entry = mod.__test.board.get().entries.find(e => e.kind === 'model')
 const svg = document.querySelector('svg')
 assert.ok(svg.querySelector('[data-lm-overlay]'))
+const settingsHost=document.createElement('div'); document.body.append(settingsHost)
+const settingsRoot=createRoot(settingsHost)
+await React.act(() => settingsRoot.render(React.createElement(settingsPage.render)))
+await React.act(() => settingsHost.querySelector('button').click())
+assert.equal(svg.querySelector('[data-lm-overlay]'),null)
+assert.equal(svg.querySelector('animate, animateTransform, animateMotion'),null)
+assert.ok(svg.querySelector('[data-lm-key="clock-60000"]'))
+await React.act(() => settingsHost.querySelector('button').click())
+assert.ok(svg.querySelector('[data-lm-overlay]'))
+await React.act(() => settingsRoot.unmount())
+
 const rings = svg.querySelector('[data-lm-key="under-1"] [data-lm-key="clock-60000"]')
 assert.ok(rings)
 time += 300
@@ -130,6 +141,34 @@ await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 assert.equal(svg.querySelector(`[data-flight="${children[1].id}"]`).dataset.outcome,'error')
 assert.ok(svg.querySelector(`[data-flight="${children[2].id}"] .satellite`))
 console.log('PASS all ten elapsed indicators and three independent identified child satellites; cancellation')
+// A timed-out observation fades neutrally; even after removal a late result
+// must create an actual visible return in the production React adapter.
+await React.act(() => fire('tool.start',{tool_id:'lost',name:'read_file'}))
+await React.act(async()=>{await new Promise(r=>setTimeout(r,25))})
+const lost=mod.__test.board.get().entries.find(e=>e.toolId==='lost')
+const lostFlight=svg.querySelector(`[data-flight="${lost.id}"]`)
+assert.ok(lostFlight)
+time=lost.t0+6*60*60*1000
+await React.act(async()=>{tick();await new Promise(r=>setTimeout(r,25))})
+assert.equal(lostFlight.dataset.outcome,'unknown')
+assert.equal(lostFlight.querySelector('.satellite'),null)
+assert.equal(lostFlight.querySelector('.response-trail path').getAttribute('stroke'),'#9ba1ab')
+time+=60800
+await React.act(async()=>{tick();await new Promise(r=>setTimeout(r,25))})
+assert.equal(lostFlight.isConnected,false)
+await React.act(()=>fire('tool.complete',{tool_id:'lost',name:'read_file',result:{success:false}}))
+await React.act(async()=>{await new Promise(r=>setTimeout(r,25))})
+const late=svg.querySelector(`[data-flight="${lost.id}"]`)
+assert.ok(late && late.isConnected,'late completion creates a real overlay after unknown fade')
+assert.equal(late.dataset.outcome,'error')
+assert.equal(late.querySelector('.response-trail path').getAttribute('stroke'),'#e8654f')
+time+=400
+await React.act(async()=>{tick();await new Promise(r=>setTimeout(r,25))})
+assert.ok(Number(late.querySelectorAll('.response-trail path')[39].getAttribute('opacity'))>0,'late response is visibly painted')
+await React.act(()=>globalThis.__testHost.state.focusedSessionId.set('b'))
+assert.equal(document.querySelector(`[data-flight="${lost.id}"]`),null)
+assert.equal(mod.__test.board.get().entries.length,0)
+console.log('PASS unknown neutral fade, post-expiry late overlay paints, focus switch clears')
 await React.act(() => app.unmount())
 const allRoot=createRoot(document.querySelector('#app'))
 const synthetic=ids.flatMap(station=>[0,1].map(n=>({id:`all-${station}-${n}`,station,kind:'tool',status:'run',t0:time-1200,t1:0})))

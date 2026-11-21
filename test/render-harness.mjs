@@ -19,6 +19,7 @@ const sdkCode = `
 import { atom } from ${JSON.stringify(pathToFileURL(ROOT + '/node_modules/nanostores/index.js').href)}
 import React from ${JSON.stringify(pathToFileURL(ROOT + '/node_modules/react/index.js').href)}
 export { atom }
+export const host = {state:{focusedSessionId:atom("test-session"),focusedSessionOwner:atom({connectionId:"host",profile:"default"})}}
 export function useValue(a) {
   const [, force] = React.useState(0)
   React.useEffect(() => a.subscribe(() => force((x) => x + 1)), [a])
@@ -49,7 +50,7 @@ const ctx = {
   registerSettingsPage: () => {}
 }
 plugin.register(ctx)
-const fire = (type, payload) => (listeners[type] || []).forEach((f) => f({ type, payload, session_id: 'test-session' }))
+const fire = (type, payload) => (listeners[type] || []).forEach((f) => f({ type, payload, session_id: 'test-session', connectionId: 'host', profile: 'default' }))
 
 // give it live data like a real session
 fire('tool.start', { tool_id: 't1', name: 'terminal', args: { command: 'ls' } })

@@ -183,7 +183,7 @@ var LotMapOriginal = (() => {
     const span = isAlarm ? ALARM_MS : GLOW_MS;
     let under = "";
     if (isLit || isAlarm) {
-      under += running.length > 0 && !isAlarm ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".16"/>` : `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="0"><animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`;
+      under += isStill || running.length > 0 && !isAlarm ? `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity=".16"/>` : `<circle cx="${x}" cy="${y}" r="${NODE + 10}" fill="${color}" opacity="0"><animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`;
     }
     if (running.length > 0) {
       const elapsed = Math.max(0, now - Math.min(...running.map((e) => e.startedAt)));
@@ -191,11 +191,11 @@ var LotMapOriginal = (() => {
       if (!isStill) {
         under += `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.3"><animate attributeName="r" values="${NODE};${NODE + 15}" ${beat}/><animate attributeName="opacity" values=".9;0" ${beat}/></circle>`;
       }
-      const hand = (r, width, lapMs, isOnce) => `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
+      const hand = (r, width, lapMs, isOnce) => isStill ? `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="${1 - (isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs) / lapMs}" transform="rotate(-90 ${x} ${y})"/>` : `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`;
       under += hand(NODE + 4, 2.2, 6e4, false) + hand(NODE + 8, 1.2, 6e5, true);
     }
     const lit = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="none" stroke="${color}" stroke-width="1.2"`;
-    const cooling = running.length > 0 ? `${lit}/>` : isLit || isAlarm ? `${lit} opacity="0"><animate attributeName="opacity" values="1;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>` : "";
+    const cooling = running.length > 0 ? `${lit}/>` : isStill && (isLit || isAlarm) ? `${lit}/>` : isLit || isAlarm ? `${lit} opacity="0"><animate attributeName="opacity" values="1;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>` : "";
     const glyphColor = isAlarm ? c.red : isLit ? hot : s.id === "memory" && count > 0 ? main : c.ash;
     const rim = `paint-order="stroke" stroke="${c.ground}" stroke-width="3.5" stroke-linejoin="round"`;
     let over = `<circle cx="${x}" cy="${y}" r="${NODE}" fill="${c.raised}" stroke="${c.line}" stroke-width="1.2"/>${cooling}<path transform="translate(${x} ${y})" d="${s.icon}" fill="none" stroke="${glyphColor}" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/><text x="${x}" y="${n1(p.y + NODE + 15)}" text-anchor="middle" ${FONT} font-size="11.5" ${rim} fill="${isLit || isAlarm ? c.bone : c.ash}">${names[s.id]}</text>`;
@@ -265,7 +265,7 @@ var LotMapOriginal = (() => {
       const p = place(i, shift);
       const nearest = Math.min(Math.hypot(p.x - CX, p.y - CY), ...STATIONS.map((_, j) => j === i ? Infinity : Math.hypot(p.x - place(j, shift).x, p.y - place(j, shift).y)));
       const orbitRadius = Math.max(0, Math.min(NODE + 6, nearest / 2 - 4.75));
-      const calls = (board.overlayFlights ? [] : board.entries).filter((e) => e.station === s.id && e.status === "run" && e.satellite !== false).slice(0, 6);
+      const calls = (board.overlayFlights && !isStill ? [] : board.entries).filter((e) => e.station === s.id && e.status === "run" && e.satellite !== false).slice(0, 6);
       for (const e of calls) {
         let hash = 0;
         for (const ch of String(e.id)) hash = Math.imul(hash, 31) + ch.charCodeAt(0) >>> 0;
