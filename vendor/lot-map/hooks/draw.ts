@@ -105,64 +105,39 @@ function ripple(p: Point, r: number, color: string, age: number): string {
   )
 }
 
-function beam(a: Point, b: Point, color: string, age: number, isDashed: boolean): string {
+function beam(path: string, color: string, age: number, isDashed: boolean): string {
   return (
-    `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke="${color}" stroke-width="1.4"${isDashed ? ' stroke-dasharray="3 4"' : ''} opacity="0">` +
-    `<animate attributeName="opacity" values=".75;0" begin="${clock(-age)}" dur="${clock(GLOW_MS / 2)}" fill="freeze"/></line>`
+    `<path d="${path}" fill="none" stroke="${color}" stroke-width="1.4"${isDashed ? ' stroke-dasharray="3 4"' : ''} opacity="0">` +
+    `<animate attributeName="opacity" values=".75;0" begin="${clock(-age)}" dur="${clock(GLOW_MS / 2)}" fill="freeze"/></path>`
   )
 }
 
-/** How far from the core a leg bends, by how many stations apart its ends are: far enough in to clear the labels under the nodes, far enough out to clear the core. */
-const BEND = [0.5, 0.5, 0.4, 0.45, 0.55, 0.75]
-
-/** The way from one station to another: a curve through the room between the core and the ring. */
-function leg(i: number, j: number, shift: number): { path: string; end: Point } {
-  const n = STATIONS.length
-  let steps = (((j - i) % n) + n) % n
-  if (steps > n / 2) steps -= n
-  const bend = at(turn(i + steps / 2, shift), BEND[Math.abs(steps)] ?? 0.5)
-  const a = edge(place(i, shift), bend, NODE + 4)
-  const b = edge(place(j, shift), bend, NODE + 4)
-  return { path: `M${n1(a.x)} ${n1(a.y)}Q${n1(bend.x)} ${n1(bend.y)} ${n1(b.x)} ${n1(b.y)}`, end: b }
-}
-
-/** The stations the main loop went through, oldest first, a station visited twice in a row counted once. */
-export function routeOf(entries: readonly Entry[], max = TRAIL_STOPS): { station: StationId; at: number }[] {
+/** Observed start order only; equal timestamps retain arrival order and imply no dependency. */
+export function routeOf(entries: readonly Entry[], max = Infinity): { station: StationId; at: number }[] {
   const stops: { station: StationId; at: number }[] = []
-  for (const e of entries) {
-    if (e.from === 'agents' || e.station === 'model') continue
+  for (const e of [...entries].sort((a, b) => a.startedAt - b.startedAt)) {
     const last = stops[stops.length - 1]
-    if (last === undefined || last.station !== e.station) stops.push({ station: e.station, at: e.startedAt })
+    if (!last || last.station !== e.station) stops.push({ station: e.station, at: e.startedAt })
   }
   return stops.slice(-max)
 }
 
+/** Links show chronological adjacency, not a call or causal relationship. */
 function trail(entries: readonly Entry[], now: number, c: Palette, isStill: boolean, shift: number): string {
-  const stops = routeOf(entries)
+  const ordered = [...entries].filter(e => e.startedAt <= now).sort((a, b) => a.startedAt - b.startedAt)
   let out = ''
-  for (let k = 1; k < stops.length; k++) {
-    const from = stops[k - 1]
-    const to = stops[k]
-    if (from === undefined || to === undefined) continue
-    const { path, end } = leg(indexOf(from.station), indexOf(to.station), shift)
-    const isHead = k === stops.length - 1
-    const age = now - to.at
-    if (age >= TRAIL_HOLD_MS + TRAIL_FADE_MS) continue
-    const opacity = n1(0.12 + (0.5 * k) / (stops.length - 1))
-    // The fading is written into the drawing, so a leg goes out on time even when nothing redraws the map.
-    const fade = `<animate data-lm-key="fade" attributeName="opacity" values="${opacity};0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`
-    // The newest leg draws itself; the rest are already there.
-    const drawing = isHead && !isStill
-      ? ` pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"><animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(to.at - now)}" dur=".5s" fill="freeze"/>`
-      : '>'
-    const key = escapeXml(`${from.station}-${from.at}-${to.station}-${to.at}`)
-    out += `<path data-lm-key="leg-${key}" d="${path}" fill="none" stroke="${c.trail}" stroke-width="${isHead ? 1.5 : 1.1}" stroke-linecap="round" opacity="${opacity}"${drawing}${fade}</path>`
-    if (isHead) {
-      out +=
-        `<circle data-lm-key="tip-${key}" cx="${n1(end.x)}" cy="${n1(end.y)}" r="2.4" fill="${c.trail}" opacity="${isStill ? '.85' : '0'}">` +
-        (isStill ? '' : `<animate attributeName="opacity" values="0;.85" begin="${clock(to.at - now + 400)}" dur=".15s" fill="freeze"/>`) +
-        `<animate attributeName="opacity" values=".85;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/></circle>`
+  let previous: Entry | undefined
+  for (const e of ordered) {
+    if (!previous) { previous = e; continue }
+    if (previous.station === e.station) { previous = e; continue }
+    const age = now - e.startedAt
+    const options = ROUTES[`${shift}:${previous.station}:${e.station}`]
+    if (age < TRAIL_HOLD_MS + TRAIL_FADE_MS && options?.length) {
+      const key = escapeXml(`${previous.id}-${e.id}`)
+      const fade = `<animate data-lm-key="fade" attributeName="opacity" values=".4;0" begin="${clock(TRAIL_HOLD_MS - age)}" dur="${clock(TRAIL_FADE_MS)}" fill="freeze"/>`
+      out += `<path data-lm-key="leg-${key}" d="${options[0]}" fill="none" stroke="${c.trail}" stroke-width="1.1" opacity=".4">${fade}</path>`
     }
+    previous = e
   }
   return out
 }
@@ -206,7 +181,7 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
           `<animate attributeName="opacity" values=".3;0" begin="${clock(-fade)}" dur="${clock(span)}" fill="freeze"/></circle>`
   }
   if (running.length > 0) {
-    const elapsed = now - Math.min(...running.map(e => e.startedAt))
+    const elapsed = Math.max(0, now - Math.min(...running.map(e => e.startedAt)))
     const beat = `begin="${clock(-(elapsed % 1400))}" dur="1.4s" repeatCount="indefinite"`
     // The beat is a ring that spreads: with reduced motion the steady halo and the clock hands say the same.
     if (!isStill) {
@@ -217,7 +192,7 @@ function station(s: (typeof STATIONS)[number], i: number, { entries, board, now,
     }
     // Two hands of a clock around the node: the inner one goes round in a minute, the outer one in ten.
     const hand = (r: number, width: number, lapMs: number, isOnce: boolean): string =>
-      `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})">` +
+      `<circle data-lm-key="clock-${lapMs}" cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${hot}" stroke-width="${width}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" transform="rotate(-90 ${x} ${y})">` +
       `<animate data-lm-key="draw" attributeName="stroke-dashoffset" values="1;0" begin="${clock(-(isOnce ? Math.min(elapsed, lapMs) : elapsed % lapMs))}" dur="${clock(lapMs)}" ${isOnce ? 'fill="freeze"' : 'repeatCount="indefinite"'}/></circle>`
     under += hand(NODE + 4, 2.2, 60_000, false) + hand(NODE + 8, 1.2, 600_000, true)
   }
@@ -295,10 +270,20 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
 
   // Spokes first, then whatever flies along them, then the nodes on top.
   // A spoke wears in with use: by the end of a session the map shows where the work went.
+  STATIONS.forEach((s, i) => {
+    const p = place(i, shift)
+    const a = edge(core, p, HUB)
+    const b = edge(p, core, NODE)
+    const worn = Math.min(1, Math.log2(1 + (board.counts[s.id] ?? 0)) / 7)
+    const line = `<line x1="${n1(a.x)}" y1="${n1(a.y)}" x2="${n1(b.x)}" y2="${n1(b.y)}" stroke-width="${n1(1 + 2.6 * worn)}" stroke-linecap="round"`
+    body += `${line} stroke="${c.spoke}"/>`
+    if (worn > 0) body += `${line} stroke="${s.id === 'memory' ? c.mem : c.accent}" opacity="${n1(worn * 0.55)}"/>`
+  })
+
   const scene: Scene = { entries: recent, board, now, c, names: setup.t.stations, isStill, shift, spent: setup.contextCost ? board.spent : undefined }
   const drawn = STATIONS.map((s, i) => station(s, i, scene))
-  body += drawn.map(d => d.under).join('')
-  body += trail(recent, now, c, isStill, shift)
+  body += drawn.map((d, i) => `<g data-lm-key="under-${i}">${d.under}</g>`).join('')
+  body += `<g data-lm-key="trail">${trail(board.entries, now, c, isStill, shift)}</g>`
 
   /** The two ends of an entry's spoke: where it starts (the core or the agents station) and its own station. */
   const ends = (e: Entry): [Point, Point] => {
@@ -306,22 +291,28 @@ export function drawMap(board: Board, now: number, setup: Setup): string {
     const start = e.from === 'agents' ? agentsAt : core
     return [edge(start, p, e.from === 'agents' ? NODE : HUB), edge(p, start, NODE)]
   }
+  for (const e of beams) {
+    const path = eventPath(e, shift, e.from === 'inbound')
+    if (path) body += `<g data-lm-key="beam-${escapeXml(String(e.id))}">${beam(path, isBad(e) ? c.red : tone(e)[0], now - e.startedAt, e.from === 'inbound')}</g>`
+  }
   for (const e of flights) {
     const path = eventPath(e, shift, e.from === 'inbound')
     const age = now - e.startedAt
     const color = e.status === 'block' ? c.red : tone(e)[1]
+    body += `<g data-lm-key="flight-${escapeXml(String(e.id))}">`
     if (e.from === 'inbound') {
       body += pulse(path, color, age, 3.8, true) + ripple(core, HUB - 2, color, age)
     } else {
       body += pulse(path, color, age, 3.8) + ripple(place(indexOf(e.station), shift), NODE, color, age)
     }
+    body += `</g>`
   }
   for (const e of returns) {
     const path = eventPath(e, shift, true)
-    body += pulse(path, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), 2.6)
+    body += `<g data-lm-key="return-${escapeXml(String(e.id))}">${pulse(path, e.status === 'ok' ? c.ash : c.red, now - (e.endedAt as number), 2.6)}</g>`
   }
 
-  body += drawn.map(d => d.over).join('')
+  body += drawn.map((d, i) => `<g data-lm-key="over-${i}">${d.over}</g>`).join('')
 
   // At most six calls per station: the ×N badge still reports the full total.
   // Identity-derived phase avoids changing existing orbits when calls start/end.

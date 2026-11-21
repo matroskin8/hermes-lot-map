@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../desktop/plugin.js', import.meta.url), 'u
 const url = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
 const sdk = `export const atom = x => ({get:()=>x,set:v=>x=v}); export const useValue = x => x.get()`
 const jsx = `export const jsx=(t,p)=>({t,p}); export const jsxs=jsx`
-const mod = await import(url(source.replace("from '@hermes/plugin-sdk'", `from '${url(sdk)}'`).replace("from 'react/jsx-runtime'", `from '${url(jsx)}'`)))
+const mod = await import(url(source.replace("from '@hermes/plugin-sdk'", `from '${url(sdk)}'`).replace("from 'react'", `from '${url("export const useRef=()=>({}); export const useLayoutEffect=()=>{}")}'`).replace("from 'react/jsx-runtime'", `from '${url(jsx)}'`)))
 const { updateMap, drawMap, setupFrom } = mod.__test
 const document = new JSDOM('<!doctype html><div id="host"></div>').window.document
 const host = document.querySelector('#host')
@@ -55,56 +55,100 @@ assert.equal(svg.querySelector('[data-lm-key="return-two"]'), null)
 assert.equal(svg.querySelector('animateMotion'), null)
 console.log('PASS reduced motion removes flights and returns while keeping SVG')
 
-// Each destination pulse owns its leg's arrival and 60-second fade, even as
-// newer destinations are added or an older leg expires on a later redraw.
+// Chronological links represent observed order, not dependency; pulse remains real Hermes traffic.
 const a = { id: 'a', station: 'shell', from: 'core', startedAt: 20000, status: 'ok' }
-const b = { id: 'b', station: 'files', from: 'core', startedAt: 21000, status: 'ok' }
-const c = { id: 'c', station: 'web', from: 'core', startedAt: 22000, status: 'ok' }
-const d = { id: 'd', station: 'web', from: 'core', startedAt: 22500, status: 'ok' }
+const b = { id: 'b', station: 'memory', from: 'core', startedAt: 21000, status: 'ok' }
 const host2 = document.createElement('div')
 updateMap(host2, draw([a, b], 21000))
 const root2 = host2.firstElementChild
 root2.getCurrentTime = () => 1
-const leg1 = root2.querySelector('[data-lm-key="leg-shell-20000-files-21000"]')
-const fade1 = leg1.querySelector('animate[attributeName="opacity"]')
-const tip = root2.querySelector('[data-lm-key="tip-shell-20000-files-21000"] animate[values=".85;0"]')
-assert.equal(fade1.getAttribute('begin'), '0.800s')
-assert.equal(fade1.getAttribute('dur'), '60.000s')
-assert.equal(tip.getAttribute('begin'), '0.800s')
-assert.equal(tip.getAttribute('dur'), '60.000s')
-updateMap(host2, draw([a, b, c], 22000))
-assert.equal(root2.querySelector('[data-lm-key="leg-shell-20000-files-21000"]'), leg1)
-assert.equal(leg1.querySelector('animate[attributeName="opacity"]'), fade1)
-assert.equal(fade1.getAttribute('begin'), '0.800s')
-const leg2 = root2.querySelector('[data-lm-key="leg-files-21000-web-22000"]')
-const fade2 = leg2.querySelector('animate[attributeName="opacity"]')
-assert.equal(Number.parseFloat(fade2.getAttribute('begin')), 1.8)
-assert.equal(fade2.getAttribute('dur'), '60.000s')
-root2.getCurrentTime = () => 1.5
-updateMap(host2, draw([a, b, c, d], 22500))
-assert.equal(root2.querySelector('[data-lm-key="leg-files-21000-web-22000"]'), leg2)
-assert.equal(fade2.getAttribute('begin'), '1.8s')
-root2.getCurrentTime = () => 60.799
-updateMap(host2, draw([a, b, c, d], 81799))
-assert.ok(root2.contains(leg1))
+const leg2 = root2.querySelector('[data-lm-key="leg-a-b"]')
+assert.ok(leg2)
+const path = leg2.getAttribute('d')
+assert.match(path, /^M[\d. -]+(?: L[\d. -]+){2,}$/)
+const points = path.match(/-?\d+(?:\.\d+)?/g).map(Number)
+for (const [idx, p] of [[4, points.slice(0,2)], [2, points.slice(-2)]]) {
+  const circle = root2.querySelector(`[data-lm-key="over-${idx}"] circle`)
+  assert.ok(Math.hypot(p[0]-Number(circle.getAttribute('cx')), p[1]-Number(circle.getAttribute('cy'))) < 35)
+}
+assert.notEqual(path, root2.querySelector('[data-lm-key="flight-b"] animateMotion').getAttribute('path'))
+assert.equal(leg2.querySelector('animate').getAttribute('dur'), '60.000s')
 root2.getCurrentTime = () => 60.8
-updateMap(host2, draw([a, b, c, d], 81800))
-assert.ok(!root2.contains(leg1))
-assert.equal(root2.querySelector('[data-lm-key="leg-files-21000-web-22000"]'), leg2)
-assert.equal(fade2.getAttribute('begin'), '1.8s')
-root2.getCurrentTime = () => 61.8
-updateMap(host2, draw([a, b, c, d], 82800))
-assert.ok(!root2.contains(leg2))
-console.log('PASS independently timed 60s trail/tip fades, stable reconciliation, deduplication and exact expiry')
+updateMap(host2, draw([a, b], 81800))
+assert.equal(root2.querySelector('[data-lm-key="leg-a-b"]'), null)
 const host3 = document.createElement('div')
-updateMap(host3, draw([a, b], 21500, setupFrom({ coreName: 'HERMES', motion: 'reduced' })))
-const stillLeg = host3.querySelector('[data-lm-key="leg-shell-20000-files-21000"]')
-assert.equal(stillLeg.querySelector('animate[attributeName="opacity"]').getAttribute('begin'), '0.300s')
-assert.equal(stillLeg.querySelector('animate[attributeName="opacity"]').getAttribute('dur'), '60.000s')
-assert.equal(stillLeg.querySelector('animate[attributeName="stroke-dashoffset"]'), null)
+updateMap(host3, draw([a, b], 21500, setupFrom({ motion: 'reduced' })))
+assert.ok(host3.querySelector('[data-lm-key="leg-a-b"] animate[attributeName="opacity"]'))
 assert.equal(host3.querySelector('animateMotion'), null)
-assert.equal(host3.querySelector('[data-lm-key^="tip-"]').getAttribute('opacity'), '.85')
-console.log('PASS reduced motion uses static trail and tip with arrival-timed fade, no flying or drawing')
+console.log('PASS chronological trail, actual pulse, fade and reduced motion')
+
+// Stable input order breaks simultaneous ties; all real stations participate.
+const allStations = ['you', 'model', 'memory', 'files', 'shell', 'web', 'browser', 'agents', 'skills', 'hooks']
+const simultaneous = allStations.map((station, i) => ({ id: `order${i}`, station, from: i === 7 ? 'agents' : 'core', startedAt: 30000, status: 'ok' }))
+const chainHost = document.createElement('div')
+updateMap(chainHost, draw(simultaneous, 30000))
+for (let i = 1; i < simultaneous.length; i++) assert.ok(chainHost.querySelector(`[data-lm-key="leg-order${i-1}-order${i}"]`))
+assert.equal(chainHost.querySelectorAll('[data-lm-key^="leg-"]').length, 9)
+// Input may arrive out of order; timestamp order prevails.
+const sortedHost = document.createElement('div')
+updateMap(sortedHost, draw([b, a], 21000))
+assert.ok(sortedHost.querySelector('[data-lm-key="leg-a-b"]'))
+const c = { id: 'c', station: 'model', from: 'core', startedAt: 22000, status: 'ok' }
+const fadeHost = document.createElement('div')
+updateMap(fadeHost, draw([a, b, c], 22000))
+assert.equal(fadeHost.querySelector('[data-lm-key="leg-a-b"] animate').getAttribute('begin'), '-0.200s')
+assert.equal(fadeHost.querySelector('[data-lm-key="leg-b-c"] animate').getAttribute('begin'), '0.800s')
+updateMap(fadeHost, draw([a, b, c], 81800))
+assert.equal(fadeHost.querySelector('[data-lm-key="leg-a-b"]'), null)
+assert.ok(fadeHost.querySelector('[data-lm-key="leg-b-c"]'))
+console.log('PASS complete real-event chain, stable simultaneous ordering, timestamp sort and staggered fade')
+
+// All islands use actual ongoing entries, oldest start, and remove both clocks
+// upon completion. Inspect the mounted SVG rather than source text.
+const stations = ['you', 'model', 'memory', 'files', 'shell', 'web', 'browser', 'agents', 'skills', 'hooks']
+for (const [i, station] of stations.entries()) {
+  const h = document.createElement('div')
+  const running = { id: 'clock', station, from: 'core', startedAt: 10000, status: 'run', satellite: false }
+  updateMap(h, draw([running], 85000))
+  const group = h.querySelector(`[data-lm-key="under-${i}"]`)
+  const minute = group.querySelector('[data-lm-key="clock-60000"] animate')
+  const ten = group.querySelector('[data-lm-key="clock-600000"] animate')
+  assert.equal(minute.getAttribute('begin'), '-15.000s', station)
+  assert.equal(ten.getAttribute('begin'), '-75.000s', station)
+  assert.equal(minute.getAttribute('repeatCount'), 'indefinite')
+  assert.equal(ten.getAttribute('fill'), 'freeze')
+  const late = document.createElement('div')
+  updateMap(late, draw([running], 650000, setupFrom({ motion: 'reduced' })))
+  assert.equal(late.querySelector('[data-lm-key="clock-60000"] animate').getAttribute('begin'), '-40.000s', station)
+  assert.equal(late.querySelector('[data-lm-key="clock-600000"] animate').getAttribute('begin'), '-600.000s', station)
+  h.firstElementChild.getCurrentTime = () => 1
+  updateMap(h, draw([{ ...running, status: 'ok', endedAt: 86000 }], 86000))
+  assert.equal(h.querySelector('[data-lm-key="clock-60000"]'), null, station)
+  assert.equal(h.querySelector('[data-lm-key="clock-600000"]'), null, station)
+}
+console.log('PASS elapsed rings on every island and completion cleanup')
+
+// Outbound and return geometry for both layouts must be jagged polylines,
+// start near Hermes and end at the expected island, including Memory.
+for (const layout of ['you-top', 'you-bottom']) {
+  const opt = setupFrom({ motion: 'full', layout })
+  for (const [i, station] of stations.entries()) {
+    const h = document.createElement('div')
+    const e = { id: `path-${station}`, station, from: 'core', startedAt: 10000, endedAt: 10200, status: 'ok' }
+    updateMap(h, draw([e], 10250, opt))
+    const outbound = h.querySelector(`[data-lm-key="flight-${e.id}"] animateMotion`).getAttribute('path')
+    const back = h.querySelector(`[data-lm-key="return-${e.id}"] animateMotion`).getAttribute('path')
+    assert.match(outbound, /^M[\d. -]+(?: L[\d. -]+){2,}$/)
+    const points = outbound.match(/-?\d+(?:\.\d+)?/g).map(Number)
+    const reversed = back.match(/-?\d+(?:\.\d+)?/g).map(Number)
+    assert.ok(Math.hypot(points[0]-230, points[1]-212) < 60, station)
+    const target = h.querySelector(`[data-lm-key="over-${i}"] circle`)
+    assert.ok(Math.hypot(points.at(-2)-Number(target.getAttribute('cx')), points.at(-1)-Number(target.getAttribute('cy'))) < 35, station)
+    assert.deepEqual(reversed.slice(0,2), points.slice(-2), station)
+    assert.deepEqual(reversed.slice(-2), points.slice(0,2), station)
+  }
+}
+console.log('PASS jagged Hermes-to-island routes and reverse returns in both layouts')
 
 // Active calls, not historical or synthetic entries, own stable satellites.
 const satHost = document.createElement('div')

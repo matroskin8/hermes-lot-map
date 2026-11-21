@@ -350,30 +350,15 @@ var LotMapOriginal = (() => {
 })();
 
 </script><script>
-(()=>{'use strict';
+// Shared playground overlay engine. Generated into desktop/plugin.js and playground HTML.
+const LotMapOverlay = (() => {
+'use strict';
 const stations=[['you','Вы'],['model','Модель'],['memory','Память'],['files','Файлы'],['shell','Терминал'],['web','Веб'],['browser','Браузер'],['agents','Агенты'],['skills','Навыки'],['hooks','Хуки']];
-const locations=[['hermes','HERMES'],...stations], names=Object.fromEntries(locations), ns='http://www.w3.org/2000/svg';
-const setup={theme:'dark',colors:{},layout:'you-top',motion:'full',background:'solid',t:{stations:names},contextCost:false,core:'HERMES'};
-const board={entries:[],counts:{},faults:{},agents:[]};
-const host=document.querySelector('#map');host.innerHTML=LotMapOriginal.drawMap(board,Date.now(),setup);const svg=host.querySelector('svg');
-const from=document.querySelector('#from'),to=document.querySelector('#to'),status=document.querySelector('#status'),send=document.querySelector('#send');
-for(const sel of [from,to]){sel.add(new Option('— выберите станцию —',''));for(const [id,name] of locations)sel.add(new Option(name,id));}
+const locations=[['hermes','HERMES'],...stations], ns='http://www.w3.org/2000/svg';
 const point=i=>({x:230+176*Math.sin(i*2*Math.PI/10),y:212-164*Math.cos(i*2*Math.PI/10)});
 const position=id=>id==='hermes'?{x:230,y:212}:point(stations.findIndex(x=>x[0]===id));
-const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
-const zones=elt('g',{class:'zones',display:'none','pointer-events':'none'});svg.append(zones);const flights=elt('g',{class:'flights'}),selection=elt('g',{class:'selection'}),hits=elt('g');svg.append(flights,selection,hits);
-let phase=0,active=new Map(),serial=0,outcomes=[];
-// Keep each ordered pair's sequence even after its flights have completed.
-const routeSequences=new Map();
-function refresh(){selection.replaceChildren();for(const [sel,color] of [[from,'#75ddcf'],[to,'#ffbe75']]){if(!sel.value)continue;const p=position(sel.value);selection.append(elt('circle',{cx:p.x,cy:p.y,r:sel.value==='hermes'?43:27,fill:'none',stroke:color,'stroke-width':3}));}send.disabled=!from.value||!to.value||from.value===to.value;status.textContent=from.value&&to.value?(from.value===to.value?'Выберите разные станции.':names[from.value]+' → '+names[to.value]+' · активных: '+[...active.values()].filter(f=>!f.returning).length):'Выберите отправление и назначение.';if(outcomes.length)status.textContent+=' · '+outcomes.join(' · ');}
-for(const [id,name] of locations){const p=position(id),hit=elt('circle',{cx:p.x,cy:p.y,r:id==='hermes'?35:25,class:'hit',tabindex:'0',role:'button','aria-label':name});const choose=()=>{if(phase===0||!from.value||to.value){from.value=id;to.value='';phase=1}else{to.value=id;phase=0}refresh()};hit.addEventListener('click',choose);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose()}});hits.append(hit)}
-for(const sel of [from,to])sel.addEventListener('change',()=>{phase=to.value?0:1;refresh()});
-document.querySelector('#swap').onclick=()=>{[from.value,to.value]=[to.value,from.value];phase=to.value?0:1;refresh()};
-document.querySelector('#reset').onclick=()=>{from.value='';to.value='';phase=0;generation++;active.clear();outcomes=[];routeSequences.clear();flights.replaceChildren();refresh()};
-// Geometry is deliberately conservative: island orbit/badges and text are obstacles.
 const obstacles=locations.flatMap(([id,name])=>{const p=position(id);if(id==='hermes')return [{id,type:'circle',x:p.x,y:p.y,r:55}];return [{id,type:'circle',x:p.x,y:p.y,r:36},{id,type:'rect',x:p.x-Math.max(20,name.length*4.2)-4,y:p.y+27,w:2*(Math.max(20,name.length*4.2)+4),h:28}];});
-for(const o of obstacles)zones.append(o.type==='circle'?elt('circle',{cx:o.x,cy:o.y,r:o.r,fill:'#ff5555','fill-opacity':'.14',stroke:'#ff7777','stroke-width':'.8'}):elt('rect',{x:o.x,y:o.y,width:o.w,height:o.h,fill:'#ff5555','fill-opacity':'.14',stroke:'#ff7777','stroke-width':'.8'}));
-document.querySelector('#zones').onchange=e=>zones.setAttribute('display',e.target.checked?'':'none');
+const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
 function blocked(p,origin,dest){if(p.x<5||p.x>455||p.y<5||p.y>425)return true;return obstacles.some(o=>o.id!==origin&&o.id!==dest&&(o.type==='circle'?Math.hypot(p.x-o.x,p.y-o.y)<=o.r+2:p.x>=o.x-2&&p.x<=o.x+o.w+2&&p.y>=o.y-2&&p.y<=o.y+o.h+2));}
 function clearSegment(a,b,origin,dest){const n=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/1.5);for(let i=0;i<=n;i++)if(blocked({x:a.x+(b.x-a.x)*i/n,y:a.y+(b.y-a.y)*i/n},origin,dest))return false;return true;}
 // A* generates deterministic alternative candidates; string-pulling and rounded
@@ -404,17 +389,61 @@ function curved(origin,dest,offset){
   const d=`M${vertices[0].x} ${vertices[0].y}`+vertices.slice(1).map(p=>` L${p.x} ${p.y}`).join('');
   return {d,samples:pathSamples(d)};
 }
+
+function create(svg, onChange=()=>{}) {
 // Routes are calculated in a worker; cycling spreads consecutive flights.
 const candidateCache=new Map();
 const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()};onmessage=e=>{const {key,origin,destination}=e.data;try{const paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,paths})}catch(error){postMessage({key,error:String(error)})}}`;
-let worker;try{worker=new Worker(URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'})))}catch(e){worker=null}
+let worker;try{const url=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));try{worker=new Worker(url)}finally{URL.revokeObjectURL(url)}}catch(e){worker=null}
 const pendingRoutes=new Map();
 if(worker){worker.onmessage=e=>{const {key,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};worker.onerror=()=>{for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();worker.terminate();worker=null}};
 function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;if(!worker)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer});worker.postMessage({key,origin,destination});return promise}
-let generation=0;
-async function launch(){if(send.disabled)return;const origin=from.value,destination=to.value,key=origin+'→'+destination,id=++serial,epoch=generation;const sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);const record={origin,destination,pending:true};active.set(id,record);refresh();status.textContent+=' · #'+id+' расчёт маршрута';try{const options=await candidates(origin,destination);if(epoch!==generation||!active.has(id))return;const chosen=options[sequence%options.length],{d,lane}=chosen;const g=elt('g',{class:'flight','data-flight':id,'data-destination':destination,'data-origin':origin,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'});const color=destination==='memory'?'#a5e6dc':'#f0c595';const path=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5',opacity:'.35'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:(Math.round(3.8*(1-.27*k)*10)/10),fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:color,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});g.append(path,...dots,satellite);flights.append(g);const occupied=new Set([...active.values()].filter(f=>f.destination===destination&&!f.pending&&!f.returning).map(f=>f.slot));let slot=0;while(occupied.has(slot))slot++;const delay=sequence%8*140,duration=2000+Math.random()*3000,failed=Math.random()<.1;g.dataset.duration=duration;g.dataset.delay=delay;active.set(id,{g,path,dots,satellite,origin,destination,lane,slot,start:performance.now()+delay,duration,failed,returning:false});refresh()}catch(error){if(epoch!==generation)return;active.delete(id);outcomes.push('#'+id+' '+names[origin]+' → '+names[destination]+' — маршрут не построен: '+error.message);outcomes=outcomes.slice(-5);refresh()}}
-send.onclick=launch;
-function frame(now){let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=now-f.start;if(elapsed<0){for(const dot of f.dots)dot.style.display='none';f.satellite.style.display='none';continue}f.satellite.style.display='';if(elapsed>=f.duration&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';outcomes.push('#'+id+' '+names[f.origin]+' → '+names[f.destination]+(f.failed?' — ошибка':' — успешно'));outcomes=outcomes.slice(-5);changed=true}if(f.returning&&elapsed>=f.duration+800){f.g.remove();active.delete(id);changed=true;continue}for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?elapsed-f.duration:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&(f.returning||elapsed<800)?'':'none';const p=f.path.getPointAtLength(travel*f.path.getTotalLength());dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),radius=Math.min(f.destination==='hermes'?48:30,nearest/2-4.75),angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}if(changed)refresh();requestAnimationFrame(frame)}requestAnimationFrame(frame);refresh();
+
+const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.append(flights);
+const active=new Map(), seen=new Set(), routeSequences=new Map(); let dead=false, raf;
+function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false}) {
+  if(dead||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
+  seen.add(id); if(seen.size>4096)seen.delete(seen.values().next().value); const key=origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
+  const f={id,origin,destination,startedAt,endedAt,failed,pending:true};active.set(id,f);onChange();
+  candidates(origin,destination).then(options=>{if(dead||!active.has(id))return;
+    if(f.endedAt && Date.now()-f.endedAt>=800){active.delete(id);onChange();return}
+    const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color=destination==='memory'?'#a5e6dc':'#f0c595';
+    const path=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5',opacity:'.35'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:color,stroke:destination==='memory'?'#62c7ba':'#e1ac6e','stroke-width':1.5});
+    g.append(path,...dots,satellite);flights.append(g);const occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===destination&&!x.pending&&!x.endedAt).map(x=>x.slot));let slot=0;while(occupied.has(slot))slot++;
+    Object.assign(f,{pending:false,g,path,dots,satellite,slot,returning:false});onChange();
+  }).catch(error=>{if(dead)return;active.delete(id);onChange(error)});
+}
+function end(id,endedAt=Date.now(),failed=false){const f=active.get(id);if(f&&!f.endedAt){f.endedAt=endedAt;f.failed=failed}}
+function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=wall-f.startedAt;
+ if(elapsed<0){for(const dot of f.dots)dot.style.display='none';f.satellite.style.display='none';continue}f.satellite.style.display='';
+ if(f.endedAt && wall>=f.endedAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.failed?'#e8654f':'#a8d9b5';for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.failed?'error':'success';changed=true}
+ if(f.returning&&wall-f.endedAt>=800){f.g.remove();active.delete(id);changed=true;continue}
+ for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-f.endedAt:elapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&(f.returning||elapsed<800)?'':'none';const p=f.path.getPointAtLength(travel*f.path.getTotalLength());dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
+ if(!f.returning){const p=position(f.destination),nearest=Math.min(...locations.filter(([id])=>id!==f.destination).map(([id])=>{const q=position(id);return Math.hypot(p.x-q.x,p.y-q.y)})),radius=Math.min(f.destination==='hermes'?48:30,nearest/2-4.75),angle=(now/850)+f.slot*2.399963229728653;f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
+ if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
+ function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
+ return {launch,end,destroy,active,seen,flights};
+}
+return {create,stations,locations,position,obstacles};
+})();
+
+(()=>{'use strict';
+const {stations,locations,position,obstacles}=LotMapOverlay, names=Object.fromEntries(locations),ns='http://www.w3.org/2000/svg';
+const setup={theme:'dark',colors:{},layout:'you-top',motion:'full',background:'solid',t:{stations:names},contextCost:false,core:'HERMES'};
+const board={entries:[],counts:{},faults:{},agents:[]},host=document.querySelector('#map');host.innerHTML=LotMapOriginal.drawMap(board,Date.now(),setup);const svg=host.querySelector('svg');
+const from=document.querySelector('#from'),to=document.querySelector('#to'),status=document.querySelector('#status'),send=document.querySelector('#send');
+for(const sel of [from,to]){sel.add(new Option('— выберите станцию —',''));for(const [id,name] of locations)sel.add(new Option(name,id))}
+const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
+const zones=elt('g',{class:'zones',display:'none','pointer-events':'none'});svg.append(zones);for(const o of obstacles)zones.append(o.type==='circle'?elt('circle',{cx:o.x,cy:o.y,r:o.r,fill:'#ff5555','fill-opacity':'.14',stroke:'#ff7777','stroke-width':'.8'}):elt('rect',{x:o.x,y:o.y,width:o.w,height:o.h,fill:'#ff5555','fill-opacity':'.14',stroke:'#ff7777','stroke-width':'.8'}));
+let phase=0,serial=0,engine;const selection=elt('g',{class:'selection'}),hits=elt('g');
+function refresh(){selection.replaceChildren();for(const [sel,color] of [[from,'#75ddcf'],[to,'#ffbe75']]){if(!sel.value)continue;const p=position(sel.value);selection.append(elt('circle',{cx:p.x,cy:p.y,r:sel.value==='hermes'?43:27,fill:'none',stroke:color,'stroke-width':3}))}send.disabled=!from.value||!to.value||from.value===to.value;status.textContent=from.value&&to.value?(from.value===to.value?'Выберите разные станции.':names[from.value]+' → '+names[to.value]+' · активных: '+(engine?[...engine.active.values()].filter(f=>!f.returning).length:0)):'Выберите отправление и назначение.'}
+engine=LotMapOverlay.create(svg,refresh);svg.append(selection,hits);
+for(const [id,name] of locations){const p=position(id),hit=elt('circle',{cx:p.x,cy:p.y,r:id==='hermes'?35:25,class:'hit',tabindex:'0',role:'button','aria-label':name});const choose=()=>{if(phase===0||!from.value||to.value){from.value=id;to.value='';phase=1}else{to.value=id;phase=0}refresh()};hit.addEventListener('click',choose);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose()}});hits.append(hit)}
+for(const sel of [from,to])sel.addEventListener('change',()=>{phase=to.value?0:1;refresh()});
+document.querySelector('#swap').onclick=()=>{[from.value,to.value]=[to.value,from.value];phase=to.value?0:1;refresh()};
+document.querySelector('#reset').onclick=()=>{from.value='';to.value='';phase=0;engine.destroy();engine=LotMapOverlay.create(svg,refresh);svg.append(selection,hits);refresh()};
+document.querySelector('#zones').onchange=e=>zones.setAttribute('display',e.target.checked?'':'none');
+send.onclick=()=>{if(send.disabled)return;const id=++serial,start=Date.now(),duration=2000+Math.random()*3000;const instance=engine;instance.launch({id,origin:from.value,destination:to.value,startedAt:start});setTimeout(()=>instance.end(id,start+duration,Math.random()<.1),duration)};refresh();
 })();
 </script><!-- Upstream license:
 MIT License

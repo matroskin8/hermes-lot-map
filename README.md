@@ -6,7 +6,7 @@ A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/h
 
 ## Features
 
-- Animated pulses for tool starts and completions; markers for failures.
+- Animated pulses for tool starts and completions; markers for failures. Fading station-to-station links show observed start order, not causality or call dependencies. Equal timestamps follow arrival order; different sessions may be mixed.
 - Active tool calls orbit their station (static dots with reduced motion). Up to six satellites per station are shown for readability; the ×N badge shows the full active count, including subagent observations. Subagent observations do not add a second satellite for a delegation, and model stream activity is not treated as a call.
 - Station counters and a central context-usage indicator when usage is available.
 - Activity feed with recent calls and durations.

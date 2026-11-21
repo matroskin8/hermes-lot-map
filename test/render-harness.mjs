@@ -30,6 +30,7 @@ export const cn = (...xs) => xs.filter(Boolean).join(' ')
 const src = readFileSync(SRC, 'utf8')
 const rewritten = src
   .replace(/from '@hermes\/plugin-sdk'/, `from ${JSON.stringify(dataUrl(sdkCode))}`)
+  .replace(/from 'react'/, `from ${JSON.stringify(pathToFileURL(ROOT + '/node_modules/react/index.js').href)}`)
   .replace(/from 'react\/jsx-runtime'/, `from ${JSON.stringify(pathToFileURL(ROOT + '/node_modules/react/jsx-runtime.js').href)}`)
 
 const mod = await import(dataUrl(rewritten))

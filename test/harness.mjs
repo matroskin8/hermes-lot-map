@@ -29,6 +29,7 @@ export const jsxs = jsx
 
 let rewritten = src
   .replace(/from '@hermes\/plugin-sdk'/, `from ${JSON.stringify(dataUrl(sdkStub))}`)
+  .replace(/from 'react'/, `from ${JSON.stringify(dataUrl('export const useRef=()=>({current:null}); export const useLayoutEffect=f=>globalThis.__mapEffects.push(f)'))}`)
   .replace(/from 'react\/jsx-runtime'/, `from ${JSON.stringify(dataUrl(jsxStub))}`)
 
 if (rewritten === src) { console.error('FAIL: specifier rewrite did not apply'); process.exit(1) }
@@ -133,7 +134,10 @@ ok(b().model === 'provider/model-two' && b().tokens === 123 && b().calls === 2, 
 const svgFor = b => {
   let html = ''
   const host = { ownerDocument: { createElement: () => ({ set innerHTML(value) { html = value }, content: { firstElementChild: {} } }) }, firstElementChild: null, appendChild: () => {} }
-  mod.__test.MapSvg({ b, now: Date.now(), motion: true }).p.ref(host)
+  globalThis.__mapEffects = []
+  const node = mod.__test.MapSvg({ b, now: Date.now(), motion: true })
+  node.p.ref.current = host
+  globalThis.__mapEffects[0]()
   return html
 }
 const modelSvg = svgFor(b())
@@ -169,10 +173,8 @@ ok(mod.__test.hintOf({ command: 'npm install ' + 'x'.repeat(60) }).length <= 28,
 // Real adapter must not count the same delegation observation as another satellite.
 fire('tool.start', { tool_id: 'delegation', name: 'delegate_task' })
 fire('subagent.start', { subagent_id: 'delegated-child' })
-const agentNode = mod.__test.MapSvg({ b: b(), now: Date.now(), motion: true })
-let mapMarkup = ''
-agentNode.p.ref({ ownerDocument: { createElement() { return { set innerHTML(v) { mapMarkup = v }, content: { firstElementChild: {} } } } }, firstElementChild: null, appendChild() {} })
-ok((mapMarkup.match(/data-lm-key="satellite-/g) || []).length === b().entries.filter(e => e.kind === 'tool' && e.status === 'run').length, 'adapter shows calls, not duplicate subagent observations or model streams')
+const mapMarkup = svgFor(b())
+ok(!mapMarkup.includes('data-lm-key="satellite-"') && b().entries.some(e => e.kind === 'tool' && e.toolId === 'delegation') && b().entries.some(e => e.kind === 'subagent' && e.status === 'run'), 'adapter delegates satellites to shared overlay despite overlapping observations')
 // Older active calls must survive the history cap and remain completable.
 fire('tool.start', { tool_id: 'long-lived', name: 'terminal' })
 for (let i = 0; i < 65; i++) {
