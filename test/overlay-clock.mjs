@@ -80,8 +80,8 @@ for(const [id,f] of engine.active){f.g.remove();engine.active.delete(id)}
 const dest='memory',center=sandbox.engine.position(dest),nearest=Math.min(...sandbox.engine.locations.filter(([id])=>id!==dest).map(([id])=>{const p=sandbox.engine.position(id);return Math.hypot(center.x-p.x,center.y-p.y)})),outer=nearest/2-4.75,capacity=Math.floor((outer-9.5)/9.5)+1
 for(let i=0;i<capacity+1;i++)engine.launch({id:`orbit-${i}`,origin:'hermes',destination:dest,startedAt:192900})
 await new Promise(r=>setImmediate(r));tick(193700)
-for(let i=0;i<capacity;i++){const f=engine.active.get(`orbit-${i}`),r=Math.hypot(num(f.satellite,'cx')-center.x,num(f.satellite,'cy')-center.y);assert.equal(f.slot,i);assert.ok(Math.abs(r-(outer-i*9.5))<1e-8)}
+for(let i=0;i<capacity;i++){const f=engine.active.get(`orbit-${i}`),r=Math.hypot(num(f.satellite,'cx')-center.x,num(f.satellite,'cy')-center.y);assert.equal(f.slot,i);assert.ok(Math.abs(r-((i+1)*9.5))<1e-8)}
 const overflow=engine.active.get(`orbit-${capacity}`);assert.equal(overflow.slot,null);assert.equal(overflow.satellite.style.display,'none')
-engine.end('orbit-1',193700);tick(193700);assert.equal(overflow.slot,1);assert.equal(engine.active.get('orbit-0').slot,0);assert.equal(overflow.satellite.style.display,'')
+engine.end('orbit-1',193700);tick(193700);assert.equal(overflow.slot,1);assert.equal(engine.active.get('orbit-0').slot,0);assert.equal(overflow.satellite.style.display,'none');tick(194500);assert.equal(overflow.satellite.style.display,'')
 engine.destroy();assert.equal(engine.active.size,0);assert.equal(svg.children.length,0)
 console.log('PASS fake clock: progressive geometry, 15s/30s outbound fade, reverse success/error, 60s fade, overlaps, future start, quick completion, destroy')

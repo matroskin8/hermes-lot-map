@@ -146,6 +146,8 @@ for (let i=0;i<ids.length;i++) {
 }
 await React.act(() => {fire('subagent.start',{subagent_id:'child2'});fire('subagent.start',{subagent_id:'child3'})})
 await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
+time += 800
+await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 const children=mod.__test.board.get().entries.filter(e=>e.kind==='subagent'&&e.status==='run')
 assert.equal(children.length,3)
 const satellites=children.map(e=>svg.querySelector(`[data-flight="${e.id}"] .satellite`))
@@ -157,7 +159,7 @@ await React.act(() => fire('subagent.complete',{subagent_id:'child2',status:'can
 await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 assert.equal(mod.__test.board.get().entries.find(e=>e.toolId==='child2').status,'err')
 assert.equal(mod.__test.board.get().entries.find(e=>e.toolId==='child3').status,'run')
-assert.equal(svg.querySelector(`[data-flight="${children[1].id}"]`).dataset.outcome,undefined)
+assert.equal(svg.querySelector(`[data-flight="${children[1].id}"]`).dataset.outcome,'error')
 time += 800
 await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 assert.equal(svg.querySelector(`[data-flight="${children[1].id}"]`).dataset.outcome,'error')
