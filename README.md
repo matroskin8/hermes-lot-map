@@ -2,7 +2,7 @@
 
 A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and visually inspired by [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
 
-> **Experimental:** compatibility with a live Hermes Desktop session is not yet verified. Events from multiple sessions or connections may be mixed; session isolation has not been verified.
+> **Experimental:** events from multiple sessions or connections may be mixed; session isolation has not been verified.
 
 ## Features
 
@@ -15,15 +15,16 @@ The plugin listens to Desktop gateway events; it does not modify tool execution.
 
 ## Requirements and installation
 
-The upstream plugin declares Hermes 0.21.7 or newer. Compatibility with a particular Desktop build and live session remains unverified for this adaptation.
+The upstream plugin declares Hermes 0.21.7 or newer. Compatibility with all Desktop builds is not guaranteed.
 
-Review the source and verify compatibility before installation. Install on the machine running Hermes Desktop:
+Install the Desktop plugin from within Hermes Desktop:
 
-```bash
-hermes plugins install https://github.com/matroskin8/hermes-lot-map --enable
-```
+1. Open **Settings → Plugins → Install from GitHub / Git URL**.
+2. Enter `https://github.com/matroskin8/hermes-lot-map`.
+3. If asked which components to install, select **Desktop**. If the backend component is already installed, it does not need to be replaced.
+4. Open **Capabilities → Plugins** and enable **Hermes Lot Map** if needed. The pane appears in the workspace.
 
-Open **Settings → Plugins → Hermes Lot Map** to show the pane. If it does not appear, reload the plugin or restart Hermes Desktop. The plugin ID is `hermes-lot-map`, distinct from the original `panoptes`; coexistence has not been verified.
+For a native Desktop connected to a remote backend, installing only on the backend with `hermes plugins install` does not install the Desktop UI on the local computer. Use the Desktop installation steps above. The plugin ID is `hermes-lot-map`, distinct from the original `panoptes`; coexistence has not been verified.
 
 ## Privacy and limitations
 
