@@ -173,7 +173,7 @@ const fmtTok = (n) => {
 }
 
 const C = {
-  teal: '#2dd4bf',
+  teal: '#caa778',
   red: '#f87171',
   amber: '#fbbf24',
   spoke: 'rgba(148, 163, 184, 0.45)'
@@ -182,182 +182,53 @@ const C = {
 const TERT = 'var(--ui-text-tertiary, #94a3b8)'
 const SEC = 'var(--ui-text-secondary, #cbd5e1)'
 
+// Original artwork is independently recreated from lot-map's public screenshots.
+const ICON = { you: '♙', files: '▤', shell: '›_', web: '◎', browser: '▣', agents: '♧', memory: '◇', tools: 'ϟ' }
 function MapSvg({ b, now, motion }) {
-  const IRIS_R = 16
-  const ringC = 2 * Math.PI * IRIS_R
   const pct = b.ctxPct
-  const ringColor = pct == null ? C.teal : pct < 0.7 ? C.teal : pct < 0.9 ? C.amber : C.red
-  const modelLive = now - b.modelLiveAt < 2200
-
-  // the pupil rests at center and glances toward activity: a running
-  // station wins, the last completion holds for a beat, then it drifts home
-  let glance = null
-  let holdAt = 0
-  for (let i = b.entries.length - 1; i >= 0; i--) {
-    const e = b.entries[i]
-    if (e.status === 'run') { glance = POS[e.station]; break }
-    if (!glance && e.t1) { glance = POS[e.station]; holdAt = e.t1 }
-  }
-  let px = CX, py = CY
-  if (glance && (holdAt === 0 || now - holdAt < 1500)) {
-    const dx = glance.x - CX, dy = glance.y - CY
-    const len = Math.hypot(dx, dy) || 1
-    px = CX + (dx / len) * 7; py = CY + (dy / len) * 7
-  }
-
-  const pulses = []
+  const ringColor = pct == null || pct < .7 ? '#caa778' : pct < .9 ? C.amber : C.red
   const running = {}
+  const pulses = []
   for (const e of b.entries) {
-    if (e.status === 'run') {
-      running[e.station] = (running[e.station] || 0) + 1
-      if (motion && now - e.t0 < 950) pulses.push({ key: 'o' + e.id, to: POS[e.station], back: false })
-    } else if (e.t1 && now - e.t1 < 550) {
-      if (motion) pulses.push({ key: 'i' + e.id, to: POS[e.station], back: true })
-    }
+    if (e.status === 'run') running[e.station] = (running[e.station] || 0) + 1
+    if (motion && ((e.status === 'run' && now - e.t0 < 950) || (e.status !== 'run' && e.t1 && now - e.t1 < 550))) pulses.push(e)
   }
-
+  const ringC = 2 * Math.PI * 29
   return jsxs('svg', {
-    viewBox: `0 0 ${W} 296`,
-    style: { width: '100%', display: 'block', flex: 'none' },
+    viewBox: `0 0 ${W} 296`, role: 'img', 'aria-label': 'Hermes activity map',
+    style: { width: '100%', display: 'block', flex: 'none', fontFamily: 'var(--font-mono, monospace)' },
     children: [
-      // the orbit the stations ride on
-      jsx('circle', {
-        cx: CX, cy: CY, r: ORBIT, fill: 'none',
-        stroke: C.spoke, strokeWidth: 1, strokeDasharray: '2 5', opacity: 0.5
-      }, 'orbit'),
-
-      // watchtower sweep: one slow line turning behind everything
-      motion
-        ? jsxs('g', {
-            opacity: 0.35,
-            children: [
-              jsxs('g', {
-                children: [
-                  jsx('line', {
-                    x1: CX, y1: CY, x2: CX + ORBIT, y2: CY,
-                    stroke: C.teal, strokeWidth: 1, opacity: 0.35
-                  }, 'sl'),
-                  jsx('animateTransform', {
-                    attributeName: 'transform', type: 'rotate',
-                    from: `0 ${CX} ${CY}`, to: `360 ${CX} ${CY}`,
-                    dur: '14s', repeatCount: 'indefinite'
-                  }, 'atr')
-                ]
-              }, 'sw')
-            ]
-          }, 'sweep')
-        : null,
-
-      // short wear ticks from the eye's edge to the orbit; thicker the more a station ran
+      ...[62, 82, 106].map((r) => jsx('circle', { cx: CX, cy: CY, r, fill: 'none', stroke: C.spoke, strokeWidth: .6, opacity: .18, strokeDasharray: r === 106 ? '2 5' : undefined }, 'guide'+r)),
       ...STATIONS.map((s) => {
-        const p = POS[s.id]
-        const n = b.counts[s.id] || 0
-        const hot = (running[s.id] || 0) > 0
-        const fx = (p.x - CX) / ORBIT, fy = (p.y - CY) / ORBIT
-        return jsx('line', {
-          x1: CX + fx * (CORE_R + 8), y1: CY + fy * (CORE_R + 8),
-          x2: CX + fx * (ORBIT - 10), y2: CY + fy * (ORBIT - 10),
-          stroke: hot ? C.teal : C.spoke,
-          strokeWidth: 1 + Math.min(n, 14) * 0.3,
-          opacity: hot ? 0.9 : 0.25 + Math.min(n, 24) / 60,
-          strokeLinecap: 'round'
-        }, s.id)
+        const p = POS[s.id], n = b.counts[s.id] || 0, hot = !!running[s.id]
+        const color = s.id === 'memory' ? '#78bcb6' : '#caa778'
+        return jsx('line', { x1: CX, y1: CY, x2: p.x, y2: p.y, stroke: hot ? color : C.spoke, strokeWidth: 0.7 + Math.min(n, 12) * .14, opacity: hot ? .75 : .23 + Math.min(n, 12) * .025 }, 'spoke'+s.id)
       }),
-
-      // station dots, labels, live badges, fault dots
       ...STATIONS.map((s) => {
-        const p = POS[s.id]
-        const run = running[s.id] || 0
-        const fault = b.faults[s.id] || 0
-        const above = p.y < CY
-        return jsxs('g', {
-          children: [
-            run > 0
-              ? jsx('circle', { cx: p.x, cy: p.y, r: 10, fill: 'none', stroke: C.teal, strokeWidth: 1, opacity: 0.55, className: motion ? 'lm-breathe' : '' }, 'halo')
-              : null,
-            jsx('circle', {
-              cx: p.x, cy: p.y, r: run > 0 ? 5.5 : 4,
-              fill: run > 0 ? C.teal : TERT,
-              stroke: 'none'
-            }, 'dot'),
-            fault > 0 ? jsx('circle', { cx: p.x + 7, cy: p.y - 7, r: 3.5, fill: C.red }, 'f') : null,
-            fault > 1
-              ? jsx('text', { x: p.x + 7, y: p.y - 4, fontSize: 7, fill: C.red, textAnchor: 'middle', children: String(fault) }, 'ft')
-              : null,
-            run > 1
-              ? jsx('text', { x: p.x - 10, y: p.y - 6, fontSize: 8, fill: C.teal, textAnchor: 'end', children: '×' + run }, 'rn')
-              : null,
-            jsx('text', {
-              x: p.x, y: above ? p.y - 12 : p.y + 15,
-              fontSize: 8.5, textAnchor: 'middle', letterSpacing: 0.4,
-              style: { fill: TERT },
-              children: s.label
-            }, 'label')
-          ]
-        }, 'g' + s.id)
+        const p = POS[s.id], run = running[s.id] || 0, fault = b.faults[s.id] || 0, n = b.counts[s.id] || 0
+        const color = s.id === 'memory' ? '#78bcb6' : '#caa778'
+        return jsxs('g', { children: [
+          run ? jsx('circle', { cx:p.x, cy:p.y, r:16, fill:color, opacity:.1, className: motion ? 'lm-breathe' : '' }, 'halo') : null,
+          jsx('circle', { cx:p.x, cy:p.y, r:11, fill:'var(--ui-surface-2, #11151a)', stroke:run ? color : '#58616a', strokeWidth:run ? 1.6 : 1 }, 'disc'),
+          jsx('text', { x:p.x, y:p.y+3.5, fontSize:10, textAnchor:'middle', fill:run ? color : '#a4a9a8', children:ICON[s.id] }, 'icon'),
+          jsx('text', { x:p.x, y:p.y+22, fontSize:8, textAnchor:'middle', fill: n ? SEC : TERT, children:s.label }, 'label'),
+          n ? jsx('text', { x:p.x, y:p.y+31, fontSize:7, textAnchor:'middle', fill:TERT, children:String(n) }, 'count') : null,
+          run > 1 ? jsx('text', { x:p.x+12, y:p.y-10, fontSize:8, fill:color, children:'×'+run }, 'running') : null,
+          fault ? jsx('circle', { cx:p.x+10, cy:p.y-8, r:3, fill:C.red }, 'fault') : null
+        ] }, 'station'+s.id)
       }),
-
-      // the eye: context ring is the iris, pupil looks at the work
-      jsxs('g', {
-        className: b.answeredAt && now - b.answeredAt < 300 ? 'lm-blink' : '',
-        children: [
-          jsx('circle', {
-            cx: CX, cy: CY, r: CORE_R,
-            fill: 'var(--ui-surface-2, #0b0f16)', stroke: modelLive ? C.teal : TERT,
-            strokeWidth: modelLive ? 2 : 1, opacity: 0.95
-          }, 'ball'),
-          pct != null
-            ? jsx('circle', {
-                cx: CX, cy: CY, r: IRIS_R, fill: 'none',
-                stroke: ringColor, strokeWidth: 3.5, strokeLinecap: 'round',
-                strokeDasharray: ringC, strokeDashoffset: ringC * (1 - Math.min(pct, 1)),
-                transform: `rotate(-90 ${CX} ${CY})`, opacity: 0.9
-              }, 'ring')
-            : null,
-          jsx('circle', {
-            cx: px, cy: py, r: modelLive ? 6.5 : 5,
-            fill: modelLive ? C.teal : SEC,
-            style: { transition: 'cx 0.4s ease, cy 0.4s ease' },
-            className: modelLive && motion ? 'lm-breathe' : ''
-          }, 'pupil'),
-          jsx('circle', {
-            cx: px - 2, cy: py - 2, r: 1.4, fill: 'var(--ui-surface-2, #0b0f16)', opacity: 0.9,
-            style: { transition: 'cx 0.4s ease, cy 0.4s ease' }
-          }, 'glint'),
-          jsx('text', {
-            x: CX, y: CY + CORE_R + 15, fontSize: 9, textAnchor: 'middle', letterSpacing: 1,
-            style: { fill: SEC },
-            children: 'HERMES'
-          }, 'corelabel'),
-          pct != null
-            ? jsx('text', {
-                x: CX, y: CY + CORE_R + 27, fontSize: 8.5, textAnchor: 'middle',
-                fill: ringColor,
-                children: Math.round(pct * 100) + '%'
-              }, 'pct')
-            : null
-        ]
-      }, 'eye'),
-
-      // pulses: out on start, back on completion
-      ...pulses.map((p) => jsx('circle', {
-        r: 3.2, fill: C.teal, opacity: 0.95,
-        cx: p.back ? p.to.x : CX, cy: p.back ? p.to.y : CY,
-        children: jsx('animateMotion', {
-          path: p.back
-            ? `M ${p.to.x} ${p.to.y} L ${CX} ${CY}`
-            : `M ${CX} ${CY} L ${p.to.x} ${p.to.y}`,
-          dur: p.back ? '0.45s' : '0.9s', fill: 'freeze', begin: '0s', repeatCount: '1'
-        })
-      }, p.key)),
-
-      // answer ring: one wide pulse when the reply lands
-      b.answeredAt && now - b.answeredAt < 1400
-        ? jsx('circle', {
-            cx: CX, cy: CY, r: CORE_R, fill: 'none',
-            stroke: C.teal, strokeWidth: 1.5, className: motion ? 'lm-answer' : ''
-          }, 'ans' + b.answeredAt)
-        : null
+      jsxs('g', { children: [
+        jsx('circle', { cx:CX, cy:CY, r:32, fill:'var(--ui-surface-2, #11151a)', stroke:'#596169', strokeWidth:2 }, 'core'),
+        pct != null ? jsx('circle', { cx:CX, cy:CY, r:29, fill:'none', stroke:ringColor, strokeWidth:2, strokeDasharray:ringC, strokeDashoffset:ringC*(1-pct), transform:`rotate(-90 ${CX} ${CY})` }, 'ring') : null,
+        jsx('text', { x:CX, y:CY-9, fontSize:8, textAnchor:'middle', fill:TERT, children:pct == null ? '—' : Math.round(pct*100)+'%' }, 'pct'),
+        jsx('text', { x:CX, y:CY+5, fontSize:9, letterSpacing:1, textAnchor:'middle', fill:SEC, children:'HERMES' }, 'name'),
+        jsx('text', { x:CX, y:CY+17, fontSize:7, textAnchor:'middle', fill:TERT, children:now-b.modelLiveAt < 2200 ? 'thinking' : 'live map' }, 'state')
+      ] }, 'hub'),
+      ...pulses.map((e) => {
+        const p = POS[e.station], back = e.status !== 'run'
+        return jsx('circle', { r:2.5, fill:e.station === 'memory' ? '#78bcb6' : '#caa778', children:jsx('animateMotion', { path:back ? `M ${p.x} ${p.y} L ${CX} ${CY}` : `M ${CX} ${CY} L ${p.x} ${p.y}`, dur:back ? '0.45s' : '0.9s', fill:'freeze' }) }, 'pulse'+e.id)
+      }),
+      b.answeredAt && now-b.answeredAt < 1400 && motion ? jsx('circle', { cx:CX, cy:CY, r:32, fill:'none', stroke:'#caa778', className:'lm-answer' }, 'answer'+b.answeredAt) : null
     ]
   })
 }
@@ -416,7 +287,7 @@ const CSS = `
 .lm-breathe { animation: lm-breathe 1.6s ease-in-out infinite; }
 @keyframes lm-breathe { 0%, 100% { opacity: 1 } 50% { opacity: 0.35 } }
 .lm-answer { animation: lm-answer 1.4s ease-out forwards; }
-@keyframes lm-answer { from { r: 22; opacity: 0.9 } to { r: 64; opacity: 0 } }
+@keyframes lm-answer { from { r: 32; opacity: 0.9 } to { r: 64; opacity: 0 } }
 .lm-blink { animation: lm-blink 0.28s linear; }
 @keyframes lm-blink { 0% { opacity: 1 } 40% { opacity: 0.1 } 100% { opacity: 1 } }
 `
