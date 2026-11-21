@@ -1,79 +1,44 @@
-<p align="center"><img src="docs/panoptes.svg" alt="Panoptes: an eye watching eight stations on an orbit, a sweep line turning" width="830"></p>
+# Panoptes Lot
 
-# Panoptes
+A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and visually inspired by [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
 
-A pane for the [Hermes](https://hermes-agent.nousresearch.com) desktop app that shows what the agent is doing while it thinks. Tool calls, model steps, subagents and context use light up stations around a core, live, in a strip docked to the right edge of your workspace.
+> **Experimental:** the adapted rendering has been tested with simulated events and React server rendering, but not yet in a live Hermes Desktop session. Events from multiple sessions or connections may be mixed; session isolation has not been verified.
 
-Named for Argus Panoptes, the all-seeing watchman of Greek myth. He belongs to the same pantheon as Hermes.
+## Features
 
-Based on [lot-map](https://github.com/alexeyw/lot-map), Aleksei Volodin's map panel for Claude Code. Same idea, new code: the original is written against the Claude Code plugin runtime, this one against the Hermes desktop plugin contract. No lines are shared, and the concept credit belongs upstream.
+- Animated pulses for tool starts and completions; markers for failures.
+- Station counters and a central context-usage indicator when usage is available.
+- Activity feed with recent calls and durations.
+- A Hermes Desktop side pane and a reduced-motion setting inherited from Panoptes.
 
-## What you get
+The plugin listens to Desktop gateway events; it does not modify tool execution. It is a visual adaptation, not a feature-complete port of lot-map.
 
-Eight stations orbit a core labeled HERMES:
+## Requirements and installation
 
-```
-                YOU
-        TOOLS            FILES
-      MEMORY    HERMES    SHELL
-        AGENTS            WEB
-               BROWSER
-```
+The upstream plugin declares Hermes 0.21.7 or newer. Compatibility with a particular Desktop build and live session remains unverified for this adaptation.
 
-At the center sits an eye. Its iris is the context gauge: teal while the window is quiet, amber past 70 percent, red past 90. Its pupil rests at center and glances toward whatever station is working, then drifts home; it blinks when a reply lands. Stations ride a dashed orbit ring, short ticks between eye and orbit wear thicker the more a station runs, and a slow sweep line turns behind everything like a watchtower radar. Every `tool.start` sends a pulse from the eye to the station that owns the tool. Completion sends it back. Failed calls leave a red dot at the station until the reply lands, and a folded feed below the map lists the last calls with durations.
+This repository is experimental and has not been live-tested. Do not use the upstream Panoptes installation command expecting it to install this adaptation. Review the source and verify compatibility before installation. A Desktop restart or plugin reload may be needed.
 
-Tool names map to stations like this:
+## Tests
 
-| Station | Tools |
-|---|---|
-| FILES | `read_file`, `write_file`, `patch`, `search_files` |
-| SHELL | `terminal`, `execute_code`, `process_manage` |
-| WEB | `web_search`, `web_extract` |
-| BROWSER | `browser_exec` |
-| AGENTS | `delegate_task`, `cronjob*`, `subagent.*` events |
-| MEMORY | `memory`, `lcm_*` |
-| YOU | `clarify`, `todo_list` |
-| TOOLS | everything else, including MCP tools |
-
-The events consumed are `tool.start`, `tool.complete`, `message.delta`, `message.complete`, `session.usage`, `subagent.*`, `status.update` and `todo.updated` from the Hermes gateway.
-
-A status-bar chip (bottom right) shows the running-call count and session totals while the pane is collapsed, and a totals line under the map carries call count and cumulative tokens from `session.usage`.
-
-## Install
-
-One command (Hermes 0.21.7 or newer):
-
-```bash
-hermes plugins install https://github.com/huwhitememes/panoptes --enable
-```
-
-Or manually: the package is a directory with `plugin.yaml` and `desktop/plugin.js`, so cloning it into the unified plugin directory is enough. No build step.
-
-```bash
-git clone https://github.com/huwhitememes/panoptes.git
-cp -r panoptes ~/.hermes/plugins/panoptes
-```
-
-Restart Hermes if it is running, or toggle the pane in Settings, Plugins, Panoptes. The pane docks itself to the right edge of the workspace. A Motion toggle (full or reduced) lives in Settings, Plugins, Panoptes.
-
-## Test
-
-Two Node harnesses, no dependencies beyond a Hermes checkout:
+Run the event and component harness with Node.js:
 
 ```bash
 node test/harness.mjs
 ```
 
-Stubs the SDK imports, fires every gateway event the plugin listens to, asserts board state and the pane contribution.
+To test server rendering with real React and nanostores, point `HERMES_DESKTOP_DIR` at a Desktop checkout with its dependencies installed:
 
 ```bash
-HERMES_DESKTOP_DIR=~/.hermes/hermes-agent/apps/desktop node test/render-harness.mjs
+HERMES_DESKTOP_DIR=/path/to/hermes-agent/apps/desktop node test/render-harness.mjs
 ```
 
-Renders the pane with the real React and nanostores from the desktop app's `node_modules`. This is the one that matters. The first shipped version passed the logic harness and still crashed the pane: React 19's dev jsx runtime reads `config.children` unguarded, so a null config throws, and text passed as the third `jsx()` argument lands in the key slot and renders nothing. The rules this taught are written into the header of `plugin.js`.
+The harness simulates events and does not establish end-to-end Desktop behavior or session isolation.
 
-The plugin itself is a single file, `plugin.js`, plain ESM. Imports are limited to `@hermes/plugin-sdk` and `react/jsx-runtime` because that is all the runtime loader allows.
+## Privacy and limitations
 
-## License
+The inherited event handler processes gateway events, including tool arguments used for short activity labels. Avoid assuming these labels are safe for screenshots or screen sharing. Review `desktop/plugin.js` before installing. The adaptation has not received a security audit.
 
-MIT, see [LICENSE](LICENSE). The original copyright line is preserved; the Hermes implementation is Copyright (c) 2026 Hu White.
+## Attribution and license
+
+Based on [Panoptes](https://github.com/huwhitememes/panoptes) by Hu White, itself inspired by [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin. The visual adaptation was independently recreated from lot-map screenshots. Distributed under the **MIT License**; the upstream copyright and permission notices are preserved in [LICENSE](LICENSE).
