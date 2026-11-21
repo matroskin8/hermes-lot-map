@@ -2,7 +2,7 @@
 
 A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and visually inspired by [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
 
-> **Experimental:** the adapted rendering has been tested with simulated events and React server rendering, but not yet in a live Hermes Desktop session. Events from multiple sessions or connections may be mixed; session isolation has not been verified.
+> **Experimental:** compatibility with a live Hermes Desktop session is not yet verified. Events from multiple sessions or connections may be mixed; session isolation has not been verified.
 
 ## Features
 
@@ -17,23 +17,13 @@ The plugin listens to Desktop gateway events; it does not modify tool execution.
 
 The upstream plugin declares Hermes 0.21.7 or newer. Compatibility with a particular Desktop build and live session remains unverified for this adaptation.
 
-This repository is experimental and has not been live-tested. Review the source and verify compatibility before installation. Its plugin ID is `hermes-lot-map`, distinct from the original `panoptes`. A Desktop restart or plugin reload may be needed.
-
-## Tests
-
-Run the event and component harness with Node.js:
+Review the source and verify compatibility before installation. Install on the machine running Hermes Desktop:
 
 ```bash
-node test/harness.mjs
+hermes plugins install https://github.com/matroskin8/hermes-lot-map --enable
 ```
 
-To test server rendering with real React and nanostores, point `HERMES_DESKTOP_DIR` at a Desktop checkout with its dependencies installed:
-
-```bash
-HERMES_DESKTOP_DIR=/path/to/hermes-agent/apps/desktop node test/render-harness.mjs
-```
-
-The harness simulates events and does not establish end-to-end Desktop behavior or session isolation.
+Open **Settings → Plugins → Hermes Lot Map** to show the pane. If it does not appear, reload the plugin or restart Hermes Desktop. The plugin ID is `hermes-lot-map`, distinct from the original `panoptes`; coexistence has not been verified.
 
 ## Privacy and limitations
 
