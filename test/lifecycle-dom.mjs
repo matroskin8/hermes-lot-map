@@ -37,8 +37,15 @@ assert.ok(feed, 'activity feed is scrollable')
 let feedHeight = 350
 Object.defineProperty(feed, 'scrollHeight', { configurable: true, get: () => feedHeight })
 feed.scrollTop = 0
-await React.act(() => fire('tool.start', {tool_id:'scroll-test',name:'terminal'}))
+await React.act(() => fire('tool.start', {tool_id:'scroll-test',name:'terminal', arguments:{secret:'private-value'}}))
 assert.equal(feed.scrollTop, 350, 'new activity follows the bottom')
+assert.match(feed.textContent, /shell.*terminal.*0 s/)
+assert.doesNotMatch(feed.textContent, /private-value/)
+time += 2100
+await React.act(() => tick())
+assert.match(feed.textContent, /shell.*terminal.*2 s/, 'active time advances on clock ticks')
+await React.act(() => fire('tool.complete', {tool_id:'scroll-test',name:'terminal',duration_s:2.1}))
+assert.match(feed.textContent, /terminal.*2\.1 s/, 'completion shows observed duration')
 feedHeight = 410
 await React.act(() => fire('tool.start', {tool_id:'scroll-test-2',name:'terminal'}))
 assert.equal(feed.scrollTop, 410, 'subsequent activity follows the new bottom')
@@ -48,11 +55,19 @@ await React.act(() => feed.dispatchEvent(new dom.window.Event('scroll', { bubble
 feedHeight = 470
 await React.act(() => fire('tool.start', {tool_id:'scroll-test-3',name:'terminal'}))
 assert.equal(feed.scrollTop, 100, 'reading older activity is not interrupted')
+time += 1000
+await React.act(() => tick())
+assert.equal(feed.scrollTop, 100, 'timer ticks do not steal scroll position')
 feed.scrollTop = 370
 await React.act(() => feed.dispatchEvent(new dom.window.Event('scroll', { bubbles: true })))
 feedHeight = 530
 await React.act(() => fire('tool.start', {tool_id:'scroll-test-4',name:'terminal'}))
 assert.equal(feed.scrollTop, 530, 'following resumes after returning to the bottom')
+await React.act(() => { for (let i=0;i<16;i++) fire('tool.start', {tool_id:'many-'+i,name:'read_file'}) })
+assert.match(feed.firstElementChild.textContent, /terminal.*2\.1 s/, 'older retained activity remains visible beyond 13 rows')
+assert.equal([...feed.children].filter(row => row.textContent.includes('read_file')).length, 16, 'individual rows are not folded')
+await React.act(() => { for (let i=0;i<16;i++) fire('tool.complete', {tool_id:'many-'+i,name:'read_file'}) })
+assert.equal([...feed.children].filter(row => row.textContent.includes('read_file')).length, 16, 'completed rows are not folded')
 await React.act(() => fire('message.delta', {text:'secret-stream'}))
 let entry = mod.__test.board.get().entries.find(e => e.kind === 'model')
 const svg = document.querySelector('svg')

@@ -1252,8 +1252,11 @@ function foldRows(entries) {
   return out
 }
 
-function Feed({ b }) {
-  const rows = foldRows(b.entries).slice(-13)
+function Feed({ b, now }) {
+  // Keep every retained observation independently visible, including older
+  // running calls; folding obscures individual timing and outcomes.
+  const rows = b.entries
+  const stamp = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   const feedRef = useRef(null)
   const followRef = useRef(true)
   useLayoutEffect(() => {
@@ -1276,7 +1279,9 @@ function Feed({ b }) {
       : rows.map((e) => jsxs('div', {
           style: { display: 'flex', gap: 6, alignItems: 'baseline', whiteSpace: 'nowrap' },
           children: [
+            jsx('span', { style: { color: TERT, flex: 'none' }, children: stamp(e.t0) }, 'time'),
             jsx('span', { style: { color: GLYPH_COLOR[e.status], flex: 'none' }, children: GLYPH[e.status] }, 'g0'),
+            jsx('span', { style: { color: TERT, flex: 'none' }, children: e.station }, 'station'),
             e.fromAgent ? jsx('span', { style: { color: TERT, flex: 'none' }, children: '↳' }, 'g1') : null,
             jsx('span', {
               style: {
@@ -1288,7 +1293,7 @@ function Feed({ b }) {
             e.fold > 1 ? jsx('span', { style: { color: TERT, flex: 'none' }, children: '+' + (e.fold - 1) }, 'g3') : null,
             jsx('span', {
               style: { flex: 'none', minWidth: 44, textAlign: 'right', color: TERT },
-              children: e.status === 'run' ? '' : fmtMs(e.ms)
+              children: e.status === 'run' ? Math.floor(Math.max(0, now - e.t0) / 1000) + ' s' : fmtMs(e.ms)
             }, 'g4')
           ]
         }, e.id))
@@ -1336,7 +1341,7 @@ function LotMapPane({ motionPref }) {
             ].filter(Boolean).join('')
           }, 'todos')
         : null,
-      Feed({ b })
+      Feed({ b, now })
     ]
   })
 }
