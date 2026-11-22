@@ -63,3 +63,7 @@ The Desktop event tap fans in multiple sessions, profiles and connections. Event
 - [matroskin8](https://github.com/matroskin8) — maintainer of Hermes Lot Map and its adaptation.
 
 The original lot-map drawing code and its dependencies are vendored in `vendor/lot-map`; its MIT notice is in [vendor/lot-map/LICENSE](vendor/lot-map/LICENSE). Hermes Lot Map is distributed under the **MIT License**; upstream copyright and permission notices are preserved in [LICENSE](LICENSE).
+
+### Flight overflow
+
+Flights start without waiting for an orbit slot; the outbound dot and trail share the same route and 800 ms clock. Completion returns start no earlier than 800 ms after the task starts, including quick completions. Slots are assigned only to still-active tasks, and existing satellites keep their radii. If a slot opens after a flight has already started without one, its route cannot be changed without moving the visible dot: the original route and trail are preserved, and the satellite appears on the assigned orbit after arrival. Consequently this late-admission handoff may visibly jump from the route endpoint to the orbit; an already-arrived task gains its satellite when admitted. With more flights than distinct safe routes, paths may overlap. Worker calculation or a suspended browser can delay rendering.
