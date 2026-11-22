@@ -66,10 +66,73 @@ function orbitRoute(d,center,radius){
  }
  return null;
 }
-function create(svg, onChange=()=>{}) {
+function create(svg, onChange=()=>{}, options={}) {
+let variant=['shards','switchback','fracture'].includes(options.variant)?options.variant:'production';
+function setVariant(value){variant=['shards','switchback','fracture'].includes(value)?value:'production'}
+// Independent visibility-graph routes through the central annulus. Nodes are
+// real waypoints, never perturbations of production routes. Each edge (and the
+// final rim-trimmed edge) is checked analytically against expanded obstacles.
+function experimental(origin,destination,variant){
+ const A=position(origin), B=position(destination), nodes=[A,B];
+ for(const r of [68,100,135,165])for(let i=0;i<16;i++){
+  const angle=i*Math.PI/8, p={x:230+r*Math.cos(angle),y:212+r*Math.sin(angle)};
+  if(!blocked(p,origin,destination))nodes.push(p);
+ }
+ const edges=nodes.map(()=>[]);
+ for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+  const a=nodes[i],b=nodes[j],len=Math.hypot(b.x-a.x,b.y-a.y);
+  if(len>115||!clearSegment(a,b,origin,destination))continue;
+  edges[i].push([j,len]);edges[j].push([i,len]);
+ }
+ const results=[];
+ // Force independent routes through different central anchors rather than merely
+ // adjusting costs: small cost changes often select the same straight spoke.
+ const anchors=nodes.map((p,i)=>({p,i})).filter(({p,i})=>i>1&&Math.hypot(p.x-230,p.y-212)<145&&Math.hypot(p.x-A.x,p.y-A.y)>30&&Math.hypot(p.x-B.x,p.y-B.y)>30);
+ for(let seed=0;seed<Math.min(anchors.length,12);seed++){
+  const anchor=anchors[Math.floor(seed*anchors.length/Math.min(anchors.length,12))];
+  const n=nodes.length,dist=new Float64Array(n*2);dist.fill(Infinity);dist[0]=0;
+  const prev=new Int32Array(n*2);prev.fill(-1);const done=new Uint8Array(n*2);
+  // State bit requires this seed's central anchor, not just any waypoint.
+  for(let iter=0;iter<n*2;iter++){
+   let k=-1;for(let i=0;i<n*2;i++)if(!done[i]&&(k<0||dist[i]<dist[k]))k=i;
+   if(k<0||!Number.isFinite(dist[k])||k===n+1)break;
+   done[k]=1;const from=k%n,a=nodes[from];
+   for(const [to,len] of edges[from]){
+    const b=nodes[to],central=to===anchor.i;
+    const next=to+((k>=n||central)?n:0);if(done[next])continue;
+    const angle=Math.atan2(b.y-a.y,b.x-a.x),mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    // Three distinct global objectives: radial spokes, orthogonal switchbacks,
+    // and a seeded diagonal lattice. All prefer the central cross to the rim.
+    const radial=Math.atan2(mid.y-212,mid.x-230);
+    const preference=variant==='shards'?Math.abs(Math.sin(angle-radial))*0.8:
+      variant==='switchback'?Math.abs(Math.sin(2*angle))*1.5:
+      Math.abs(Math.sin(2*(angle-Math.PI/4)))*1.3;
+    const phase=seed*Math.PI/4, side=(mid.x-230)*Math.cos(phase)+(mid.y-212)*Math.sin(phase);
+    const center=Math.hypot(mid.x-230,mid.y-212)/165;
+    const cost=len*(1+preference+center*.7+Math.max(0,-side/165)*.8);
+    if(dist[k]+cost<dist[next]){dist[next]=dist[k]+cost;prev[next]=k}
+   }
+  }
+  let k=n+1;if(!Number.isFinite(dist[k]))continue;const points=[];
+  while(k!==-1){points.push(nodes[k%n]);k=prev[k]}points.reverse();
+  if(points.length<3)continue;
+  const rim=(p,q,r)=>{const d=Math.hypot(q.x-p.x,q.y-p.y);return {x:p.x+(q.x-p.x)*r/d,y:p.y+(q.y-p.y)*r/d}};
+  // Drop waypoints within the visible rim before trimming.
+  const r1=origin==='hermes'?43:26,r2=destination==='hermes'?43:26;
+  while(points.length>2&&Math.hypot(points[1].x-A.x,points[1].y-A.y)<=r1)points.splice(1,1);
+  while(points.length>2&&Math.hypot(points[points.length-2].x-B.x,points[points.length-2].y-B.y)<=r2)points.splice(points.length-2,1);
+  points[0]=rim(A,points[1],r1);points[points.length-1]=rim(B,points[points.length-2],r2);
+  if(!points.slice(1).every((p,i)=>clearSegment(points[i],p,origin,destination)))continue;
+  const first=points[0],last=points[points.length-1],dx=last.x-first.x,dy=last.y-first.y,chord=Math.hypot(dx,dy);
+  if(!chord||!points.some(p=>Math.abs(dx*(p.y-first.y)-dy*(p.x-first.x))/chord>=1))continue;
+  const d=`M${points[0].x} ${points[0].y}`+points.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),samples=pathSamples(d);
+  if(results.every(p=>different(samples,p.samples)))results.push({d,samples,lane:variant+seed});
+ }
+ return results;
+}
 // Routes are calculated in a worker; cycling spreads consecutive flights.
 const candidateCache=new Map();
-const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()};onmessage=e=>{const {key,requestId,origin,destination}=e.data;try{const paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,requestId,paths})}catch(error){postMessage({key,requestId,error:String(error)})}}`;
+const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()},experimental=${experimental.toString()};onmessage=e=>{const {key,requestId,origin,destination,variant='production'}=e.data;try{if(variant!=='production'){const paths=experimental(origin,destination,variant);postMessage({key,requestId,paths});return}let paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,requestId,paths})}catch(error){postMessage({key,requestId,error:String(error)})}}`;
 let worker=null, nextRequestId=0;
 const pendingRoutes=new Map();
 function ensureWorker(){
@@ -80,7 +143,7 @@ function ensureWorker(){
  current.onerror=()=>{if(worker!==current)return;for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();current.terminate();worker=null};
  return current;
 }
-function candidates(origin,destination){const key=origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;const current=ensureWorker();if(!current)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b}),requestId=++nextRequestId;const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p&&p.requestId===requestId){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer,requestId});try{current.postMessage({key,requestId,origin,destination})}catch(error){clearTimeout(timer);pendingRoutes.delete(key);for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(error)}pendingRoutes.clear();current.terminate();worker=null;reject(error)}return promise}
+function candidates(origin,destination,variant){const key=variant+'|'+origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;const current=ensureWorker();if(!current)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b}),requestId=++nextRequestId;const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p&&p.requestId===requestId){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer,requestId});try{current.postMessage({key,requestId,origin,destination,variant})}catch(error){clearTimeout(timer);pendingRoutes.delete(key);for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(error)}pendingRoutes.clear();current.terminate();worker=null;reject(error)}return promise}
 
 const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
 const active=new Map(), seen=new Set(), unknownSeen=new Set(), routeSequences=new Map(); let dead=false, raf;
@@ -89,7 +152,7 @@ function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false
   if(dead||active.has(id)||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
   seen.add(id); if(unknown)unknownSeen.add(id); if(seen.size>4096){const oldest=seen.values().next().value;seen.delete(oldest);unknownSeen.delete(oldest)} const key=origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
   const f={id,origin,destination,startedAt,endedAt,failed,unknown,pending:true};active.set(id,f);onChange();
-  candidates(origin,destination).then(options=>{if(dead||!active.has(id))return;
+  candidates(origin,destination,variant).then(options=>{if(dead||!active.has(id))return;
     const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color='#f0c595', satelliteColor=color;
     const path=elt('path',{d,fill:'none',stroke:'none'}),returnPath=elt('path',{d,fill:'none',stroke:'none'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:satelliteColor,stroke:'#e1ac6e','stroke-width':1.5});
     const out=elt('g',{class:'outbound-trail'}),back=elt('g',{class:'response-trail'});
@@ -122,7 +185,7 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
 
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
  function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
- return {launch,end,destroy,active,seen,flights};
+ return {launch,end,destroy,setVariant,active,seen,flights};
 }
 return {create,stations,locations,position,obstacles};
 })();
