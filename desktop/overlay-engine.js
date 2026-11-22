@@ -45,7 +45,7 @@ function curved(origin,dest,offset){
   return {d,samples:pathSamples(d)};
 }
 
-const orbitGeometry=new Map(locations.map(([id])=>{const p=position(id),nearest=Math.min(...locations.filter(([other])=>other!==id).map(([other])=>{const q=position(other);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75);return [id,{p,outer,capacity:Math.max(0,Math.floor((outer-9.5)/9.5)+1)}]}));
+const orbitGeometry=new Map(locations.map(([id])=>{const p=position(id),nearest=Math.min(...locations.filter(([other])=>other!==id).map(([other])=>{const q=position(other);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),base=Math.min(id==='hermes'?48:30,outer);return [id,{p,outer,base,capacity:Math.max(0,Math.floor((outer-base)/9.5)+1)}]}));
 // Trim at the first intersection, extending the final segment toward the centre
 // when the visible-rim route ends outside the selected inner orbit.
 function orbitRoute(d,center,radius){
@@ -101,7 +101,7 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  if(elapsed<0){f.g.style.display='none';continue}f.g.style.display='';
  if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
  if(wall>=returnAt+800+60000){f.g.remove();active.delete(id);changed=true;continue}
- if(!f.returning&&f.slot===null){const {p,capacity}=orbitGeometry.get(f.destination),occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!=null).map(x=>x.slot));let slot=0;while(slot<capacity&&occupied.has(slot))slot++;if(slot<capacity){const selected=orbitRoute(f.path.getAttribute('d'),p,9.5*(slot+1));if(selected){f.slot=slot;f.angle=selected.angle;f.path.setAttribute('d',selected.d);for(const segment of f.outbound)segment.setAttribute('d',selected.d);f.travelStart=f.waiting?wall:f.startedAt;f.g.dataset.orbitSlot=slot}}else f.waiting=true}
+ if(!f.returning&&f.slot===null){const {p,base,capacity}=orbitGeometry.get(f.destination),occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!=null).map(x=>x.slot));let slot=0;while(slot<capacity&&occupied.has(slot))slot++;if(slot<capacity){const selected=orbitRoute(f.path.getAttribute('d'),p,base+9.5*slot);if(selected){f.slot=slot;f.angle=selected.angle;f.path.setAttribute('d',selected.d);for(const segment of f.outbound)segment.setAttribute('d',selected.d);f.travelStart=f.waiting?wall:f.startedAt;f.g.dataset.orbitSlot=slot}}else f.waiting=true}
  const length=f.path.getTotalLength(), returnLength=f.returnPath.getTotalLength(), n=f.outbound.length, travelElapsed=wall-(f.travelStart??f.startedAt), outProgress=Math.max(0,Math.min(1,travelElapsed/800)), backProgress=Math.max(0,Math.min(1,(wall-returnAt)/800));
  // Each small interval is clipped on the original path: no straight-line shortcuts at bends.
  for(let i=0;i<n;i++){const lo=i/n,hi=(i+1)/n, outEnd=Math.min(hi,outProgress,1-backProgress), backStart=Math.max(lo,1-backProgress);
@@ -112,7 +112,7 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  }
  for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-returnAt:travelElapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&age<800+k*45&&(!f.waiting||f.slot!==null)?'':'none';const p=f.returning?f.returnPath.getPointAtLength(travel*returnLength):f.path.getPointAtLength(travel*length);dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
  f.satellite.style.display='none';
- if(!f.returning&&f.slot!==null&&travelElapsed>=800){const {p}=orbitGeometry.get(f.destination),radius=9.5*(f.slot+1),angle=f.angle+(travelElapsed-800)/(850*(f.slot+1));f.satellite.style.display='';f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
+ if(!f.returning&&f.slot!==null&&travelElapsed>=800){const {p,base}=orbitGeometry.get(f.destination),radius=base+9.5*f.slot,angle=f.angle+(travelElapsed-800)/(850*(f.slot+1));f.satellite.style.display='';f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
 
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
  function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
