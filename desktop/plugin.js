@@ -98,8 +98,8 @@ function orbitRoute(d,center,radius){
  return null;
 }
 function create(svg, onChange=()=>{}, options={}) {
-let variant=['shards','switchback','fracture'].includes(options.variant)?options.variant:'production';
-function setVariant(value){variant=['shards','switchback','fracture'].includes(value)?value:'production'}
+let variant=['shards','switchback','fracture','lightning'].includes(options.variant)?options.variant:'production';
+function setVariant(value){variant=['shards','switchback','fracture','lightning'].includes(value)?value:'production'}
 // Independent visibility-graph routes through the central annulus. Nodes are
 // real waypoints, never perturbations of production routes. Each edge (and the
 // final rim-trimmed edge) is checked analytically against expanded obstacles.
@@ -156,6 +156,11 @@ function experimental(origin,destination,variant){
   if(!points.slice(1).every((p,i)=>clearSegment(points[i],p,origin,destination)))continue;
   const first=points[0],last=points[points.length-1],dx=last.x-first.x,dy=last.y-first.y,chord=Math.hypot(dx,dy);
   if(!chord||!points.some(p=>Math.abs(dx*(p.y-first.y)-dy*(p.x-first.x))/chord>=1))continue;
+  // A visible lightning bend must change direction by at least 30 degrees.
+  if(variant==='lightning'&&!points.slice(1,-1).some((p,i)=>{
+   const a=points[i],b=points[i+2],ux=p.x-a.x,uy=p.y-a.y,vx=b.x-p.x,vy=b.y-p.y;
+   return Math.hypot(ux,uy)>=5&&Math.hypot(vx,vy)>=5&&Math.abs(Math.atan2(ux*vy-uy*vx,ux*vx+uy*vy))>=Math.PI/6;
+  }))continue;
   const d=`M${points[0].x} ${points[0].y}`+points.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),samples=pathSamples(d);
   if(results.every(p=>different(samples,p.samples)))results.push({d,samples,lane:variant+seed});
  }
