@@ -154,7 +154,9 @@ const satellites=children.map(e=>svg.querySelector(`[data-flight="${e.id}"] .sat
 assert.ok(satellites.every(Boolean))
 const agentCenter={x:230+176*Math.sin(7*2*Math.PI/10),y:212-164*Math.cos(7*2*Math.PI/10)}
 const radii=satellites.map(s=>Math.hypot(Number(s.getAttribute('cx'))-agentCenter.x,Number(s.getAttribute('cy'))-agentCenter.y))
-assert.ok(Math.min(...radii.map((r,i)=>Math.min(...radii.filter((_,j)=>j!==i).map(q=>Math.abs(r-q)))))>=9.49,`distinct nonoverlapping radii: ${radii}`)
+const sortedRadii=[...radii].sort((a,b)=>a-b)
+assert.ok(sortedRadii.slice(1).every((r,i)=>Math.abs(r-sortedRadii[i]-4.75)<1e-7),`distinct radii spaced 4.75 apart: ${radii}`)
+assert.ok(satellites.every(s=>s.getAttribute('r')==='4'&&s.getAttribute('stroke-width')==='1.5'))
 await React.act(() => fire('subagent.complete',{subagent_id:'child2',status:'cancelled'}))
 await React.act(async () => {await new Promise(r=>setTimeout(r,25))})
 assert.equal(mod.__test.board.get().entries.find(e=>e.toolId==='child2').status,'err')
