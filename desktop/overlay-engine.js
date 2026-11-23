@@ -32,7 +32,7 @@ function orbitRoute(d,center,radius){
 function create(svg, onChange=()=>{}, options={}) {
 let variant=['shards','switchback','fracture','lightning','ants','moths','lizards','streams','swarm'].includes(options.variant)?options.variant:'production';
 function setVariant(value){variant=['shards','switchback','fracture','lightning','ants','moths','lizards','streams','swarm'].includes(value)?value:'production'}
-// Routes are calculated in a worker; cycling spreads consecutive flights.
+// Routes are calculated in a worker and cached by variant and endpoints.
 const candidateCache=new Map();
 
 let worker=null, nextRequestId=0;
@@ -48,15 +48,16 @@ function ensureWorker(){
 function candidates(origin,destination,variant){const base=variant+'|'+origin+'→'+destination,key=variant==='ants'?base+'|'+(++nextRequestId):base;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;const current=ensureWorker();if(!current)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b}),requestId=++nextRequestId;const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p&&p.requestId===requestId){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer,requestId});try{current.postMessage({key,requestId,origin,destination,variant})}catch(error){clearTimeout(timer);pendingRoutes.delete(key);for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(error)}pendingRoutes.clear();current.terminate();worker=null;reject(error)}return promise}
 
 const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
-const active=new Map(), seen=new Set(), unknownSeen=new Set(), routeSequences=new Map(); let dead=false, raf;
+const active=new Map(), seen=new Set(), unknownSeen=new Set(), routeSequences=new Map(), usedCandidates=new Map(); let dead=false, raf;
 function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false,unknown=false,settings={}}) {
   if(!active.has(id)&&unknownSeen.has(id)&&endedAt!=null&&!unknown){seen.delete(id);unknownSeen.delete(id)}
   if(dead||active.has(id)||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
-  seen.add(id); if(unknown)unknownSeen.add(id); if(seen.size>4096){const oldest=seen.values().next().value;seen.delete(oldest);unknownSeen.delete(oldest)} const key=variant+'|'+origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
+  seen.add(id); if(unknown)unknownSeen.add(id); if(seen.size>4096){const oldest=seen.values().next().value;seen.delete(oldest);unknownSeen.delete(oldest)} const routeVariant=variant, key=routeVariant+'|'+origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
   const valid=(v,min,max,fallback)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max?v:fallback;
   const f={id,origin,destination,startedAt,endedAt,failed,unknown,pending:true,outboundSeconds:valid(settings.outboundSeconds,1,3600,30),remainingPercent:valid(settings.remainingPercent,0,100,50),responseSeconds:valid(settings.responseSeconds,1,3600,60),maxSatellites:Math.floor(valid(settings.maxSatellites,0,10,10))};active.set(id,f);onChange();
-  candidates(origin,destination,variant).then(options=>{if(dead||active.get(id)!==f)return;
-    const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color='#f0c595', satelliteColor=color;
+  candidates(origin,destination,routeVariant).then(options=>{if(dead||active.get(id)!==f)return;
+    const index=routeVariant==='production'?Math.floor(Math.random()*options.length):sequence%options.length, used=usedCandidates.get(key)||new Set(), reused=routeVariant==='production'?used.has(index):sequence>=options.length;used.add(index);usedCandidates.set(key,used);
+    const {d,lane}=options[index], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':reused?'true':'false'}), color='#f0c595', satelliteColor=color;
     const path=elt('path',{d,fill:'none',stroke:'none'}),returnPath=elt('path',{d,fill:'none',stroke:'none'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:satelliteColor,stroke:'#e1ac6e','stroke-width':1.5});
     const out=elt('g',{class:'outbound-trail'}),back=elt('g',{class:'response-trail'});
     const segment=(group,color,i)=>{const p=elt('path',{d,fill:'none',stroke:color,'stroke-width':'1.5','data-segment':i,opacity:0});group.append(p);return p};
@@ -87,7 +88,7 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  if(!f.returning&&f.slot!==null&&travelElapsed>=800){const {p,base}=orbitGeometry.get(f.destination),radius=base+4.75*f.slot,angle=f.angle+(travelElapsed-800)/(850*(f.slot+1));f.satellite.style.display='';f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
 
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
- function clear(){for(const f of active.values())f.g?.remove();active.clear();seen.clear();unknownSeen.clear();routeSequences.clear();onChange()}
+ function clear(){for(const f of active.values())f.g?.remove();active.clear();seen.clear();unknownSeen.clear();routeSequences.clear();usedCandidates.clear();onChange()}
  function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
  return {launch,end,clear,destroy,setVariant,active,seen,flights};
 }
