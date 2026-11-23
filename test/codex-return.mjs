@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom'
 
 const script = readFileSync(new URL('../codex/app.js', import.meta.url), 'utf8')
 
-async function load(events) {
+async function load(events, name = 'project') {
   const dom = new JSDOM('<div id="map"></div><ol id="feed"></ol><select id="session"></select><div id="state"></div><div id="source"></div>',
     { url: 'http://localhost/?session=test', runScripts: 'outside-only' })
   const { window } = dom
@@ -18,7 +18,7 @@ async function load(events) {
   window.matchMedia = () => ({ matches: false })
   window.setInterval = (callback, delay) => { ticks.set(delay, callback); return delay }
   window.fetch = async () => ({ ok: true, json: async () => ({
-    sessions: [{ id: 'test', name: 'project' }],
+    sessions: [{ id: 'test', name }],
     session: { id: 'test', state: 'working', source: 'test', events: currentEvents },
   }) })
   window.LotMapSetup = { setupFrom: () => ({ motion: 'full' }) }
@@ -41,6 +41,7 @@ async function load(events) {
   await new Promise(resolve => setImmediate(resolve))
   return {
     sessionLabel: () => window.document.getElementById('session').selectedOptions[0].textContent,
+    fullSessionTitle: () => window.document.getElementById('session').selectedOptions[0].title,
     ends,
     active,
     async update(nextEvents, time) {
@@ -68,5 +69,10 @@ live.close()
 const historical = await load([completed])
 assert.equal(historical.active.get('call').endedAt, 2000)
 historical.close()
+
+const longTitle = await load([], 'A'.repeat(90))
+assert.equal(longTitle.sessionLabel(), `${'A'.repeat(79)}…`)
+assert.equal(longTitle.fullSessionTitle(), 'A'.repeat(90))
+longTitle.close()
 
 console.log('PASS Codex completion starts return on observation without replaying history')

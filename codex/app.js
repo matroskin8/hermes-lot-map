@@ -97,7 +97,8 @@
       for (const session of data.sessions) {
         const option = document.createElement('option')
         option.value = session.id
-        option.textContent = session.name
+        option.textContent = session.name.length > 80 ? `${session.name.slice(0, 79)}…` : session.name
+        option.title = session.name
         select.append(option)
       }
       select.value = chosen?.id || previous
