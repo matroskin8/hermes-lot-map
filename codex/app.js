@@ -16,16 +16,20 @@
     const entries = []
     const counts = {}
     const faults = {}
-    for (const event of session.events || []) {
+    const events = session.events || []
+    let lastAnswer = -1
+    for (const [index, event] of events.entries()) if (event.label === 'Answer ready') lastAnswer = index
+    for (const [index, event] of events.entries()) {
       if (!stations.has(event.station)) continue
       const startedAt = Date.parse(event.time)
       if (!Number.isFinite(startedAt)) continue
-      const endedAt = event.completed ? Date.parse(event.completed) : undefined
       const status = event.status === 'running' ? 'run' : event.status === 'error' ? 'err' : event.status === 'unknown' || event.status === 'interrupted' ? 'unknown' : 'ok'
+      const completed = event.completed ? Date.parse(event.completed) : NaN
+      const endedAt = Number.isFinite(completed) ? completed : status === 'run' ? undefined : startedAt
       const from = event.station === 'you' && event.label === 'Message received' ? 'inbound' : 'core'
-      entries.push({ id: event.id, station: event.station, label: event.label, from, startedAt, endedAt: Number.isFinite(endedAt) ? endedAt : undefined, status, satellite: true })
+      entries.push({ id: event.id, station: event.station, label: event.label, from, startedAt, endedAt, status, satellite: true })
       if (event.station !== 'model') counts[event.station] = (counts[event.station] || 0) + 1
-      if (status === 'err') faults[event.station] = (faults[event.station] || 0) + 1
+      if (status === 'err' && index > lastAnswer) faults[event.station] = (faults[event.station] || 0) + 1
     }
     return { entries, counts, faults, model: session.model || undefined, context: session.context ?? undefined, overlayFlights: true }
   }
