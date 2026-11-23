@@ -15,7 +15,7 @@ class Element {
 let time=100000,callback;const DateFake={now:()=>time}
 const sandbox={document:{createElementNS:(_,tag)=>new Element(tag)},Date:DateFake,Map,Set,Math,Float64Array,Int32Array,Uint8Array,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},Worker:class{postMessage({key,requestId}){queueMicrotask(()=>this.onmessage({data:{key,requestId,paths:[{d:'M0 0 L100 0',lane:0}]}}))}terminate(){}},setTimeout,clearTimeout,requestAnimationFrame:f=>(callback=f,1),cancelAnimationFrame(){}}
 vm.createContext(sandbox)
-vm.runInContext(readFileSync(new URL('../desktop/overlay-engine.js',import.meta.url),'utf8')+';globalThis.engine=LotMapOverlay',sandbox)
+vm.runInContext((readFileSync(new URL('../desktop/route-generator.js',import.meta.url),'utf8')+'\n'+readFileSync(new URL('../desktop/overlay-engine.js',import.meta.url),'utf8'))+';globalThis.engine=LotMapOverlay',sandbox)
 const svg=new Element('svg'),engine=sandbox.engine.create(svg),tick=t=>{time=t;callback(t)}
 // Outbound flight and trace are warm yellow for every destination, including Memory.
 for(const [destination] of sandbox.engine.locations) {
@@ -83,5 +83,18 @@ await new Promise(r=>setImmediate(r));tick(193700)
 for(let i=0;i<capacity;i++){const f=engine.active.get(`orbit-${i}`),r=Math.hypot(num(f.satellite,'cx')-center.x,num(f.satellite,'cy')-center.y);assert.equal(f.slot,i);assert.ok(Math.abs(r-(base+i*4.75))<1e-8)}
 const overflow=engine.active.get(`orbit-${capacity}`);assert.equal(overflow.slot,null);assert.equal(overflow.satellite.style.display,'none')
 engine.end('orbit-1',193700);tick(193700);assert.equal(overflow.slot,1);assert.equal(engine.active.get('orbit-0').slot,0);assert.equal(overflow.satellite.style.display,'');tick(194500);assert.equal(overflow.satellite.style.display,'')
+// Per-flight settings remain independent while requests overlap.
+engine.clear(); tick(200000)
+engine.setVariant('ants')
+engine.launch({id:'old-settings',origin:'hermes',destination:'files',startedAt:200000,settings:{outboundSeconds:10,remainingPercent:20,responseSeconds:2,maxSatellites:1}})
+engine.setVariant('moths')
+engine.launch({id:'new-settings',origin:'hermes',destination:'files',startedAt:200000,settings:{outboundSeconds:20,remainingPercent:50,responseSeconds:4,maxSatellites:1}})
+await new Promise(r=>setImmediate(r));tick(201000)
+const old=engine.active.get('old-settings'), newer=engine.active.get('new-settings')
+assert.equal(old.slot,0);assert.equal(newer.slot,null)
+tick(210000);assert.ok(Math.abs(num(old.outbound[0],'opacity')-.2)<1e-9);assert.ok(Math.abs(num(newer.outbound[0],'opacity')-.75)<1e-9)
+engine.end('old-settings',210000);engine.end('new-settings',210000);tick(210800);tick(212800)
+assert.equal(engine.active.has('old-settings'),false);assert.equal(engine.active.has('new-settings'),true)
+engine.clear();assert.equal(engine.active.size,0);assert.equal(engine.flights.children.length,0)
 engine.destroy();assert.equal(engine.active.size,0);assert.equal(svg.children.length,0)
 console.log('PASS fake clock: progressive geometry, 15s/30s outbound fade, reverse success/error, 60s fade, overlaps, future start, quick completion, destroy')

@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hermes Lot Map — отладка</title><style>
 *{box-sizing:border-box}body{margin:0;background:#0a0c11;color:#ebe6dc;font:15px system-ui,sans-serif}main{max-width:1050px;margin:auto;padding:20px}h1{font-size:23px;margin:0 0 8px}.layout{display:grid;grid-template-columns:minmax(300px,620px) minmax(240px,1fr);gap:20px;align-items:start}#map svg{display:block;width:100%;height:auto}.controls{background:#12151c;border:1px solid #272c36;border-radius:12px;padding:16px}label{display:block;margin:12px 0 5px}select,button{font:inherit;background:#202633;color:#fff;border:1px solid #596274;border-radius:6px;padding:9px;width:100%}button{cursor:pointer;margin-top:10px}button.primary{background:#b8762a;border-color:#e1ac6e;color:#fff;font-weight:bold}button:disabled{opacity:.45;cursor:not-allowed}.row{display:flex;gap:8px}.row button{flex:1}small,p{color:#adb4c0;line-height:1.45}.hit{cursor:pointer;fill:transparent;stroke:transparent;stroke-width:3}.hit:hover,.hit:focus{stroke:#f0c595;outline:none}.selection{pointer-events:none}.flight{pointer-events:none}@media(max-width:700px){.layout{grid-template-columns:1fr}}
-</style></head><body><main><h1>Hermes Lot Map — отладка маршрутов</h1><p>Выберите отправление и назначение кликом по станциям или в списках; затем нажмите «Отправить». Повторная отправка создаёт точки; безопасные маршруты могут повторно использоваться, точки запускаются с задержкой и занимают разные орбиты. Полная раздельность маршрутов не гарантируется.</p><div class="layout"><div id="map" aria-label="Карта станций"></div><section class="controls"><label for="variant">Стиль маршрута (эксперимент)</label><select id="variant"><option value="production">Production</option><option value="lightning">Молния — резкие изломы</option><option value="shards">Осколки — мелкие изломы</option><option value="switchback">Серпантин — резкие зигзаги</option><option value="fracture">Трещина — частые нерегулярные изломы</option></select><label for="from">Откуда</label><select id="from"></select><label for="to">Куда</label><select id="to"></select><div class="row"><button id="swap" type="button">⇄ Поменять</button><button id="reset" type="button">Сбросить</button></div><label><input type="checkbox" id="zones"> Показать запрещённые зоны</label><button class="primary" id="send" type="button">Отправить →</button><p id="status" role="status" aria-live="polite">Выберите отправление и назначение.</p><p>Клик по карте: сначала отправление, затем назначение. Следующий клик начинает новый выбор. Можно использовать списки и клавиатуру.</p><p><strong>Важно:</strong> карта нарисована оригинальным рендерером плагина. Отладочные вызовы существуют только в браузере: каждый активен случайные 2–5 секунд, затем точка возвращается к отправлению; вероятность ошибки — 10%. Цвет и размер импульсов следуют палитре рендерера, но события симулируются; рендерер и маршрутизация общие с production. Спутник на орбите обозначает активный вызов; параллельные вызовы видны отдельно.</p><small>Источник: hermes-lot-map, main, 39fab7c7c207c6fe8f6400479ecc6e687897ff71. Общий исходный рендерер и overlay, собранные в автономный файл.</small></section></div></main>
+</style></head><body><main><h1>Hermes Lot Map — отладка маршрутов</h1><p>Выберите отправление и назначение кликом по станциям или в списках; затем нажмите «Отправить». Повторная отправка создаёт точки; безопасные маршруты могут повторно использоваться, точки запускаются с задержкой и занимают разные орбиты. Полная раздельность маршрутов не гарантируется.</p><div class="layout"><div id="map" aria-label="Карта станций"></div><section class="controls"><label for="variant">Стиль маршрута (эксперимент)</label><select id="variant"><option value="production">Оригинальный маршрут</option><option value="moths">Мотыльки</option><option value="lizards">Ящерицы</option><option value="streams">Ручьи</option><option value="swarm">Рой</option><option value="ants">Муравьи — близко к кратчайшему</option><option value="lightning">Молния — резкие изломы</option></select><label for="from">Откуда</label><select id="from"></select><label for="to">Куда</label><select id="to"></select><div class="row"><button id="swap" type="button">⇄ Поменять</button><button id="reset" type="button">Сбросить</button></div><label><input type="checkbox" id="zones"> Показать запрещённые зоны</label><button class="primary" id="send" type="button">Отправить →</button><p id="status" role="status" aria-live="polite">Выберите отправление и назначение.</p><p>Клик по карте: сначала отправление, затем назначение. Следующий клик начинает новый выбор. Можно использовать списки и клавиатуру.</p><p><strong>Важно:</strong> карта нарисована оригинальным рендерером плагина. Отладочные вызовы существуют только в браузере: каждый активен случайные 2–5 секунд, затем точка возвращается к отправлению; вероятность ошибки — 10%. Цвет и размер импульсов следуют палитре рендерера, но события симулируются; рендерер и маршрутизация общие с production. Спутник на орбите обозначает активный вызов; параллельные вызовы видны отдельно.</p><small>Источник: hermes-lot-map, main, 39fab7c7c207c6fe8f6400479ecc6e687897ff71. Общий исходный рендерер и overlay, собранные в автономный файл.</small></section></div></main>
 <script>
 // BEGIN SHARED MAP RENDERER
 var LotMapOriginal = (() => {
@@ -909,16 +909,15 @@ function updateMap(host, markup) {
 // END SHARED MAP RECONCILE
 
 </script><script>
-// BEGIN SHARED OVERLAY ENGINE
-// Shared playground overlay engine. Generated into desktop/plugin.js and playground HTML.
-const LotMapOverlay = (() => {
+// BEGIN SHARED ROUTE GENERATOR
+// Shared route generation and worker source; embedded before the overlay engine.
+const LotMapRouteGenerator = (() => {
 'use strict';
 const stations=[['you','Вы'],['model','Модель'],['memory','Память'],['files','Файлы'],['shell','Терминал'],['web','Веб'],['browser','Браузер'],['agents','Агенты'],['skills','Навыки'],['hooks','Хуки']];
-const locations=[['hermes','HERMES'],...stations], ns='http://www.w3.org/2000/svg';
+const locations=[['hermes','HERMES'],...stations];
 const point=i=>({x:230+176*Math.sin(i*2*Math.PI/10),y:212-164*Math.cos(i*2*Math.PI/10)});
 const position=id=>id==='hermes'?{x:230,y:212}:point(stations.findIndex(x=>x[0]===id));
 const obstacles=locations.flatMap(([id,name])=>{const p=position(id);if(id==='hermes')return [{id,type:'circle',x:p.x,y:p.y,r:55}];return [{id,type:'circle',x:p.x,y:p.y,r:36},{id,type:'rect',x:p.x-Math.max(20,name.length*4.2)-4,y:p.y+27,w:2*(Math.max(20,name.length*4.2)+4),h:28}];});
-const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
 function blocked(p,origin,dest){if(p.x<5||p.x>455||p.y<5||p.y>425)return true;return obstacles.some(o=>o.id!==origin&&o.id!==dest&&(o.type==='circle'?Math.hypot(p.x-o.x,p.y-o.y)<=o.r+2:p.x>=o.x-2&&p.x<=o.x+o.w+2&&p.y>=o.y-2&&p.y<=o.y+o.h+2));}
 function clearSegment(a,b,origin,dest){
  if(a.x<5||a.x>455||a.y<5||a.y>425||b.x<5||b.x>455||b.y<5||b.y>425)return false;
@@ -957,30 +956,31 @@ function curved(origin,dest,offset){
   return {d,samples:pathSamples(d)};
 }
 
-const orbitGeometry=new Map(locations.map(([id])=>{const p=position(id),nearest=Math.min(...locations.filter(([other])=>other!==id).map(([other])=>{const q=position(other);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),base=Math.min(id==='hermes'?48:30,outer);return [id,{p,outer,base,capacity:10}]}));
-// Trim at the first intersection, extending the final segment toward the centre
-// when the visible-rim route ends outside the selected inner orbit.
-function orbitRoute(d,center,radius){
- const nums=d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),pts=[];
- for(let i=0;i<nums.length;i+=2)pts.push({x:nums[i],y:nums[i+1]});
- // Large accepted overlapping orbits may contain the origin. Travel outward
- // from the route start to a real contact instead of waiting forever for entry.
- const start=pts[0],distance=Math.hypot(start.x-center.x,start.y-center.y);
- if(distance<radius){const angle=distance?Math.atan2(start.y-center.y,start.x-center.x):0,hit={x:center.x+radius*Math.cos(angle),y:center.y+radius*Math.sin(angle)};return {d:`M${start.x} ${start.y} L${hit.x} ${hit.y}`,angle}}
- pts.push(center);
- for(let i=1;i<pts.length;i++){
-  const a=pts[i-1],b=pts[i],dx=b.x-a.x,dy=b.y-a.y,x=a.x-center.x,y=a.y-center.y,A=dx*dx+dy*dy,B=2*(x*dx+y*dy),C=x*x+y*y-radius*radius,disc=B*B-4*A*C;
-  if(!A||disc<0)continue;
-  const roots=[(-B-Math.sqrt(disc))/(2*A),(-B+Math.sqrt(disc))/(2*A)];
-  const t=roots.find(t=>t>=0&&t<=1);if(t===undefined)continue;
-  const hit={x:a.x+t*dx,y:a.y+t*dy},vertices=pts.slice(0,i).concat(hit);
-  return {d:`M${vertices[0].x} ${vertices[0].y}`+vertices.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),angle:Math.atan2(hit.y-center.y,hit.x-center.x)};
+// Bounded, irregular S-shaped alternatives around an unobstructed chord.
+// Only actual rendered edges are admitted; blocked chords use existing detours.
+function crossing(origin,dest,seed){
+ const a=position(origin),b=position(dest),dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+ if(len<100||!clearSegment(a,b,origin,dest))return null;
+ const nx=-dy/len,ny=dx/len, sign=seed%2?1:-1;
+ // Different, deliberately asymmetric zeroes avoid a shared midpoint. Some
+ // guides change side twice; one-sided curved alternatives remain available.
+ const roots=[[.29],[.39],[.57],[.69],[.30,.68],[.40,.74],[.25,.58],[.47,.76]][Math.floor(seed/2)%8];
+ const points=[];
+ for(let i=0;i<=16;i++){
+  const t=i/16, wave=roots.reduce((v,r)=>v*Math.sin(Math.PI*(t-r)),1);
+  const offset=i===0||i===16?0:sign*48*Math.sin(Math.PI*t)*wave*(.9+.1*Math.sin(i*1.7+seed));
+  points.push({x:a.x+dx*t+nx*offset,y:a.y+dy*t+ny*offset});
  }
- return null;
+ const rim=(p,q,r)=>{const d=Math.hypot(q.x-p.x,q.y-p.y);return {x:p.x+(q.x-p.x)*r/d,y:p.y+(q.y-p.y)*r/d}};
+ // Discard points inside endpoint rims before trimming.
+ while(points.length>2&&Math.hypot(points[1].x-a.x,points[1].y-a.y)<(origin==='hermes'?43:26))points.splice(1,1);
+ while(points.length>2&&Math.hypot(points.at(-2).x-b.x,points.at(-2).y-b.y)<(dest==='hermes'?43:26))points.splice(-2,1);
+ points[0]=rim(a,points[1],origin==='hermes'?43:26);points[points.length-1]=rim(b,points[points.length-2],dest==='hermes'?43:26);
+ if(!points.slice(1).every((p,i)=>clearSegment(points[i],p,origin,dest)))return null;
+ const d=`M${points[0].x} ${points[0].y}`+points.slice(1).map(p=>` L${p.x} ${p.y}`).join('');
+ return {d,samples:pathSamples(d),lane:'cross'+seed};
 }
-function create(svg, onChange=()=>{}, options={}) {
-let variant=['shards','switchback','fracture','lightning'].includes(options.variant)?options.variant:'production';
-function setVariant(value){variant=['shards','switchback','fracture','lightning'].includes(value)?value:'production'}
+
 // Independent visibility-graph routes through the central annulus. Nodes are
 // real waypoints, never perturbations of production routes. Each edge (and the
 // final rim-trimmed edge) is checked analytically against expanded obstacles.
@@ -1047,29 +1047,265 @@ function experimental(origin,destination,variant){
  }
  return results;
 }
+// Fragment collision-free guide edges into asymmetric angular teeth. Check the
+// actual rendered lines, not just the guide, against the expanded obstacles.
+function lightning(origin,destination){
+ const guides=experimental(origin,destination,'lightning'), results=[];
+ for(let seed=0;seed<guides.length;seed++){
+  const nums=guides[seed].d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),base=[];
+  for(let i=0;i<nums.length;i+=2)base.push({x:nums[i],y:nums[i+1]});
+  const points=[base[0]];
+  for(let j=1;j<base.length;j++){
+   const a=base[j-1],b=base[j],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+   if(len<8){points.push(b);continue}
+   let tooth=null;
+   for(const side of [1,-1]){
+    for(const scale of [1,.7,.45,.25,.12,.06]){
+     const count=Math.max(3,Math.ceil(len/17)), candidate=[a];
+     for(let k=1;k<count;k++){
+      const t=k/count, irregular=.7+((seed*13+j*7+k*11)%9)/20;
+      const offset=side*(k%2?1:-1)*Math.min(10,len/count*.8)*irregular*scale;
+      candidate.push({x:a.x+dx*t-dy/len*offset,y:a.y+dy*t+dx/len*offset});
+     }
+     candidate.push(b);
+     if(candidate.slice(1).every((p,i)=>clearSegment(candidate[i],p,origin,destination))){tooth=candidate.slice(1);break}
+    }
+    if(tooth)break;
+   }
+   points.push(...(tooth||[b]));
+  }
+  const d=`M${points[0].x} ${points[0].y}`+points.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),samples=pathSamples(d);
+  if(results.every(p=>different(samples,p.samples)))results.push({d,samples,lane:'lightning'+seed});
+ }
+ return results;
+}
+// Each directed pair keeps its own trail in the worker. A small bias toward the
+// preceding path is combined with a rotating lateral preference; a hard length
+// cap prevents the trail from turning a short trip into a large detour.
+function antRoute(origin,destination,previous,iteration){
+ const A=position(origin),B=position(destination),nodes=[A,B],step=20;
+ for(let y=10;y<=410;y+=step)for(let x=10;x<=450;x+=step){const p={x,y};if(!blocked(p,origin,destination))nodes.push(p)}
+ const edges=nodes.map(()=>[]);
+ for(let i=0;i<nodes.length;i++)for(let j=i+1;j<nodes.length;j++){
+  const a=nodes[i],b=nodes[j],len=Math.hypot(a.x-b.x,a.y-b.y);
+  if((i>1&&len>29)||(i<2&&j>1&&len>38))continue;
+  if(!clearSegment(a,b,origin,destination))continue;
+  edges[i].push([j,len]);edges[j].push([i,len]);
+ }
+ function solve(biased){
+  const n=nodes.length,dist=new Float64Array(n),prev=new Int32Array(n),done=new Uint8Array(n);dist.fill(Infinity);prev.fill(-1);dist[0]=0;
+  for(let t=0;t<n;t++){
+   let k=-1;for(let i=0;i<n;i++)if(!done[i]&&(k<0||dist[i]<dist[k]))k=i;
+   if(k<0||!Number.isFinite(dist[k])||k===1)break;done[k]=1;
+   for(const [j,len] of edges[k]){if(done[j])continue;const p=nodes[j];
+    const near=previous?Math.min(...previous.map(q=>Math.hypot(q.x-p.x,q.y-p.y))):100;
+    const phase=iteration*2.399963, wave=Math.sin(p.x*.045+phase)*Math.cos(p.y*.04-phase);
+    const factor=biased?1+.12*Math.min(near/55,1)+.10*(wave+1):1;
+    const v=dist[k]+len*factor;if(v<dist[j]){dist[j]=v;prev[j]=k}
+   }
+  }
+  if(!Number.isFinite(dist[1]))return null;let k=1,points=[];while(k!==-1){points.push(nodes[k]);k=prev[k]}return points.reverse();
+ }
+ const length=ps=>ps.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p.x-ps[i].x,p.y-ps[i].y),0);
+ const best=solve(false),alternative=solve(true);if(!best)return null;
+ let points=alternative&&length(alternative)<=length(best)*1.2?alternative:best;
+ // String pulling never cuts through an expanded obstacle.
+ const reduced=[points[0]];for(let i=0;i<points.length-1;){let j=points.length-1;while(j>i+1&&!clearSegment(points[i],points[j],origin,destination))j--;reduced.push(points[j]);i=j}points=reduced;
+ const rim=(a,b,r)=>{const d=Math.hypot(b.x-a.x,b.y-a.y);return {x:a.x+(b.x-a.x)*r/d,y:a.y+(b.y-a.y)*r/d}};
+ const r1=origin==='hermes'?43:26,r2=destination==='hermes'?43:26;
+ while(points.length>2&&Math.hypot(points[1].x-A.x,points[1].y-A.y)<r1)points.splice(1,1);
+ while(points.length>2&&Math.hypot(points[points.length-2].x-B.x,points[points.length-2].y-B.y)<r2)points.splice(points.length-2,1);
+ points[0]=rim(A,points[1],r1);points[points.length-1]=rim(B,points[points.length-2],r2);
+ if(!points.slice(1).every((p,i)=>clearSegment(points[i],p,origin,destination)))return null;
+ // Build a locally wandering trail around the preceding ant, but constrain its
+ // visible length relative to this pair's shortest grid route. The old greedy
+ // string-pull erased virtually all of the search's lateral variation.
+ const encode=ps=>`M${ps[0].x} ${ps[0].y}`+ps.slice(1).map(p=>` L${p.x} ${p.y}`).join('');
+ const limit=length(points)*1.22, base=pathSamples(encode(points));
+ const guide=previous&&length(previous)<=limit&&previous.slice(1).every((p,i)=>clearSegment(previous[i],p,origin,destination))?previous:base;
+ for(const amplitude of [13,9,5,2]){
+  const count=guide.length, candidate=guide.map((p,i)=>{
+   if(i===0||i===count-1)return p;
+   const before=guide[i-1],after=guide[i+1],dx=after.x-before.x,dy=after.y-before.y,n=Math.hypot(dx,dy)||1;
+   const t=i/(count-1),phase=iteration*2.399963;
+   const offset=amplitude*Math.sin(Math.PI*t)*(0.65*Math.sin(t*12+phase)+0.35*Math.sin(t*23-phase*1.7));
+   return {x:p.x-dy/n*offset,y:p.y+dx/n*offset};
+  });
+  if(length(candidate)<=limit&&candidate.slice(1).every((p,i)=>clearSegment(candidate[i],p,origin,destination))){points=candidate;break}
+ }
+ const d=encode(points);
+ return {d,samples:pathSamples(d),lane:'ants'+iteration};
+}
+function moths(origin,destination){
+ const guides=experimental(origin,destination,'shards'),results=[];
+ for(const guide of guides){
+  const nums=guide.d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),points=[];
+  for(let i=0;i<nums.length;i+=2)points.push({x:nums[i],y:nums[i+1]});
+  let accepted=false;
+  for(let i=0;i<points.length-1&&!accepted;i++){
+   const a=points[i],b=points[i+1],length=Math.hypot(b.x-a.x,b.y-a.y);
+   if(length<18)continue;
+   const ux=(b.x-a.x)/length,uy=(b.y-a.y)/length;
+   for(const radius of [14,10,7])for(const side of [1,-1]){
+    if(accepted)continue;
+    const span=8, start=(length-span)/2, loop=[];
+    for(let j=0;j<=48;j++){
+     const t=j/48,angle=2*Math.PI*t,forward=start+span*t+radius*Math.sin(angle),normal=side*radius*(1-Math.cos(angle));
+     loop.push({x:a.x+ux*forward-uy*normal,y:a.y+uy*forward+ux*normal});
+    }
+    const vertices=[...points.slice(0,i+1),...loop,...points.slice(i+1)];
+    if(!vertices.slice(1).every((p,k)=>clearSegment(vertices[k],p,origin,destination)))continue;
+    const d=`M${vertices[0].x} ${vertices[0].y}`+vertices.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),samples=pathSamples(d);
+    if(results.every(p=>different(samples,p.samples))){results.push({d,samples,lane:'moths'+results.length});accepted=true}
+   }
+  }
+ }
+ return results;
+}
+
+function lizards(origin,destination){
+ const bases=[];
+ for(const offset of [55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p)bases.push(p.d)}
+ if(bases.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d)bases.push(d)}
+ const results=[];
+ for(let seed=0;seed<bases.length;seed++){
+  const n=bases[seed].match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),base=[];
+  for(let i=0;i<n.length;i+=2)base.push({x:n[i],y:n[i+1]});
+  for(const scale of [1,.65,.35]){
+   const pts=[base[0]];
+   for(let j=1;j<base.length;j++){
+    const a=base[j-1],b=base[j],dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy),count=Math.ceil(len/17);
+    for(let k=1;k<count;k++){
+     const t=k/count,phase=(j*17+k*13+seed*7),spike=(phase%11===0?11:0),offset=scale*(Math.sin(phase*2.37)*3.5+spike*(phase%2?1:-1));
+     pts.push({x:a.x+dx*t-dy/len*offset,y:a.y+dy*t+dx/len*offset});
+    }
+    pts.push(b);
+   }
+   if(!pts.slice(1).every((p,i)=>clearSegment(pts[i],p,origin,destination)))continue;
+   const d=`M${pts[0].x} ${pts[0].y}`+pts.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),samples=pathSamples(d);
+   if(results.every(p=>different(samples,p.samples)))results.push({d,samples,lane:'lizards'+seed});
+   break;
+  }
+ }
+ return results;
+}
+
+function streams(origin,destination){
+ const guides=experimental(origin,destination,'shards');
+ for(const guide of guides){
+  const nums=guide.d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),base=[];
+  for(let i=0;i<nums.length;i+=2)base.push({x:nums[i],y:nums[i+1]});
+  // Resample uniformly along the guide, so offsets decay to a shared trunk.
+  const lengths=base.slice(1).map((p,i)=>Math.hypot(p.x-base[i].x,p.y-base[i].y)),total=lengths.reduce((a,b)=>a+b,0);
+  if(!total)continue;
+  const count=Math.max(12,Math.ceil(total/5)),raw=[];
+  for(let i=0;i<=count;i++){let d=total*i/count,j=0;while(j<lengths.length-1&&d>lengths[j])d-=lengths[j++];const a=base[j],b=base[j+1],t=lengths[j]?d/lengths[j]:0;raw.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t})}
+  const output=[];
+  for(const offset of [0,5,10,15,-5,-10,-15,20,-20]){
+   const pts=raw.map((p,i)=>{const a=raw[Math.max(0,i-1)],b=raw[Math.min(count,i+1)],len=Math.hypot(b.x-a.x,b.y-a.y)||1,t=i/count;
+    const wave=t<.72?Math.sin(Math.PI*t/.72):0;return {x:p.x-(b.y-a.y)/len*offset*wave,y:p.y+(b.x-a.x)/len*offset*wave}});
+   // Chaikin refinement rounds corners without SVG curves (flatten consumers
+   // accept only M/L). Reject the whole candidate if any resulting edge clips.
+   let smooth=pts;
+   for(let pass=0;pass<2;pass++){const next=[smooth[0]];for(let i=1;i<smooth.length;i++){const a=smooth[i-1],b=smooth[i];next.push({x:.75*a.x+.25*b.x,y:.75*a.y+.25*b.y},{x:.25*a.x+.75*b.x,y:.25*a.y+.75*b.y})}next.push(smooth.at(-1));smooth=next}
+   if(!smooth.slice(1).every((p,i)=>clearSegment(smooth[i],p,origin,destination)))continue;
+   const d=`M${smooth[0].x} ${smooth[0].y}`+smooth.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),samples=pathSamples(d);
+   if(output.every(p=>different(samples,p.samples)))output.push({d,samples,lane:'streams'+offset});
+  }
+  if(output.length>=2)return output;
+ }
+ return [];
+}
+
+function swarm(origin,destination){
+ const guide=route(origin,destination,0);if(!guide)return [];
+ const nums=guide.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),vertices=[];
+ for(let i=0;i<nums.length;i+=2){const p={x:nums[i],y:nums[i+1]},last=vertices[vertices.length-1];if(!last||Math.hypot(p.x-last.x,p.y-last.y)>1e-8)vertices.push(p)}
+ const lengths=vertices.slice(1).map((p,i)=>Math.hypot(p.x-vertices[i].x,p.y-vertices[i].y)),total=lengths.reduce((a,b)=>a+b,0);
+ const results=[{d:guide,lane:'swarm0'}];
+ for(let lane=1;lane<=8;lane++){
+  for(const amplitude of [12,8,5,3,1.5]){
+   let distance=0,points=[vertices[0]];
+   for(let i=0;i<lengths.length;i++){
+    const a=vertices[i],b=vertices[i+1],len=lengths[i],parts=Math.max(1,Math.ceil(len/8));
+    for(let j=1;j<=parts;j++){
+     const t=j/parts,progress=(distance+len*t)/total;
+     // Opposite phases guarantee crossings; envelope joins the guide at both rims.
+     const offset=amplitude*(lane%2?1:-1)*Math.sin(Math.PI*progress)*Math.sin(2*Math.PI*progress+(Math.floor((lane-1)/2)*.35));
+     points.push({x:a.x+(b.x-a.x)*t-(b.y-a.y)/len*offset,y:a.y+(b.y-a.y)*t+(b.x-a.x)/len*offset});
+    }distance+=len;
+   }
+   if(points.slice(1).every((p,i)=>clearSegment(points[i],p,origin,destination))){
+    const d=`M${points[0].x} ${points[0].y}`+points.slice(1).map(p=>` L${p.x} ${p.y}`).join('');
+    results.push({d,lane:'swarm'+lane});break;
+   }
+  }
+ }
+ return results;
+}
+const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},crossing=${crossing.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()},experimental=${experimental.toString()},lightning=${lightning.toString()},antRoute=${antRoute.toString()},moths=${moths.toString()},lizards=${lizards.toString()},streams=${streams.toString()},swarm=${swarm.toString()},trails=new Map();onmessage=e=>{const {key,requestId,origin,destination,variant='production'}=e.data;try{if(variant==='ants'){const trailKey=origin+'→'+destination,trail=trails.get(trailKey),p=antRoute(origin,destination,trail?.samples,trail?.iteration||0);if(p)trails.set(trailKey,{samples:p.samples,iteration:(trail?.iteration||0)+1});postMessage({key,requestId,paths:p?[p]:[]});return}if(variant!=='production'){const generator={moths,lizards,streams,swarm,lightning}[variant];const paths=generator?generator(origin,destination):experimental(origin,destination,variant);postMessage({key,requestId,paths});return}let paths=[];for(let seed=0;seed<16;seed++){const p=crossing(origin,destination,seed);if(p&&paths.every(q=>different(p.samples,q.samples)))paths.push(p)}for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,requestId,paths})}catch(error){postMessage({key,requestId,error:String(error)})}}`;
+return {clearSegment, workerSource};
+})();
+// END SHARED ROUTE GENERATOR
+// BEGIN SHARED OVERLAY ENGINE
+// Shared playground overlay engine. Generated into desktop/plugin.js and playground HTML.
+const LotMapOverlay = (() => {
+'use strict';
+const stations=[['you','Вы'],['model','Модель'],['memory','Память'],['files','Файлы'],['shell','Терминал'],['web','Веб'],['browser','Браузер'],['agents','Агенты'],['skills','Навыки'],['hooks','Хуки']];
+const locations=[['hermes','HERMES'],...stations], ns='http://www.w3.org/2000/svg';
+const point=i=>({x:230+176*Math.sin(i*2*Math.PI/10),y:212-164*Math.cos(i*2*Math.PI/10)});
+const position=id=>id==='hermes'?{x:230,y:212}:point(stations.findIndex(x=>x[0]===id));
+const obstacles=locations.flatMap(([id,name])=>{const p=position(id);if(id==='hermes')return [{id,type:'circle',x:p.x,y:p.y,r:55}];return [{id,type:'circle',x:p.x,y:p.y,r:36},{id,type:'rect',x:p.x-Math.max(20,name.length*4.2)-4,y:p.y+27,w:2*(Math.max(20,name.length*4.2)+4),h:28}];});
+const elt=(tag,attrs={})=>{const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);return e};
+const {clearSegment, workerSource}=LotMapRouteGenerator;
+const orbitGeometry=new Map(locations.map(([id])=>{const p=position(id),nearest=Math.min(...locations.filter(([other])=>other!==id).map(([other])=>{const q=position(other);return Math.hypot(p.x-q.x,p.y-q.y)})),outer=Math.max(0,nearest/2-4.75),base=Math.min(id==='hermes'?48:30,outer);return [id,{p,outer,base,capacity:10}]}));
+// Trim at the first intersection, extending the final segment toward the centre
+// when the visible-rim route ends outside the selected inner orbit.
+function orbitRoute(d,center,radius){
+ const nums=d.match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi).map(Number),pts=[];
+ for(let i=0;i<nums.length;i+=2)pts.push({x:nums[i],y:nums[i+1]});
+ // Large accepted overlapping orbits may contain the origin. Travel outward
+ // from the route start to a real contact instead of waiting forever for entry.
+ const start=pts[0],distance=Math.hypot(start.x-center.x,start.y-center.y);
+ if(distance<radius){const angle=distance?Math.atan2(start.y-center.y,start.x-center.x):0,hit={x:center.x+radius*Math.cos(angle),y:center.y+radius*Math.sin(angle)};return {d:`M${start.x} ${start.y} L${hit.x} ${hit.y}`,angle}}
+ pts.push(center);
+ for(let i=1;i<pts.length;i++){
+  const a=pts[i-1],b=pts[i],dx=b.x-a.x,dy=b.y-a.y,x=a.x-center.x,y=a.y-center.y,A=dx*dx+dy*dy,B=2*(x*dx+y*dy),C=x*x+y*y-radius*radius,disc=B*B-4*A*C;
+  if(!A||disc<0)continue;
+  const roots=[(-B-Math.sqrt(disc))/(2*A),(-B+Math.sqrt(disc))/(2*A)];
+  const t=roots.find(t=>t>=0&&t<=1);if(t===undefined)continue;
+  const hit={x:a.x+t*dx,y:a.y+t*dy},vertices=pts.slice(0,i).concat(hit);
+  return {d:`M${vertices[0].x} ${vertices[0].y}`+vertices.slice(1).map(p=>` L${p.x} ${p.y}`).join(''),angle:Math.atan2(hit.y-center.y,hit.x-center.x)};
+ }
+ return null;
+}
+function create(svg, onChange=()=>{}, options={}) {
+let variant=['shards','switchback','fracture','lightning','ants','moths','lizards','streams','swarm'].includes(options.variant)?options.variant:'production';
+function setVariant(value){variant=['shards','switchback','fracture','lightning','ants','moths','lizards','streams','swarm'].includes(value)?value:'production'}
 // Routes are calculated in a worker; cycling spreads consecutive flights.
 const candidateCache=new Map();
-const workerSource=`'use strict';const stations=${JSON.stringify(stations)},locations=${JSON.stringify(locations)},obstacles=${JSON.stringify(obstacles)};const point=${point.toString()},position=${position.toString()},blocked=${blocked.toString()},clearSegment=${clearSegment.toString()},route=${route.toString()},curved=${curved.toString()},pathSamples=${pathSamples.toString()},different=${different.toString()},experimental=${experimental.toString()};onmessage=e=>{const {key,requestId,origin,destination,variant='production'}=e.data;try{if(variant!=='production'){const paths=experimental(origin,destination,variant);postMessage({key,requestId,paths});return}let paths=[];for(const offset of [0,55,-55,28,-28,80,-80,110,-110,165,-165]){const p=curved(origin,destination,offset);if(p&&!paths.some(q=>q.samples&&Math.max(...p.samples.map((v,i)=>Math.hypot(v.x-q.samples[i].x,v.y-q.samples[i].y)))<8))paths.push({...p,lane:offset})}if(paths.length<4)for(let lane=0;lane<5;lane++){const d=route(origin,destination,lane);if(d){const samples=pathSamples(d);if(paths.every(p=>different(samples,p.samples)))paths.push({d,lane:'astar'+lane,samples})}}postMessage({key,requestId,paths})}catch(error){postMessage({key,requestId,error:String(error)})}}`;
+
 let worker=null, nextRequestId=0;
 const pendingRoutes=new Map();
 function ensureWorker(){
  if(worker)return worker;
  try{const url=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));try{worker=new Worker(url)}finally{URL.revokeObjectURL(url)}}catch(e){worker=null;return null}
  const current=worker;
- current.onmessage=e=>{const {key,requestId,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending||pending.requestId!==requestId)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!Array.isArray(paths)||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}candidateCache.set(key,paths);pending.resolve(paths)};
+ current.onmessage=e=>{const {key,requestId,paths,error}=e.data, pending=pendingRoutes.get(key);if(!pending||pending.requestId!==requestId)return;pendingRoutes.delete(key);clearTimeout(pending.timer);if(error||!Array.isArray(paths)||!paths.length){pending.reject(new Error(error||'безопасный маршрут не найден'));return}if(!key.startsWith('ants|'))candidateCache.set(key,paths);pending.resolve(paths)};
  current.onerror=()=>{if(worker!==current)return;for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('ошибка расчёта маршрута'))}pendingRoutes.clear();current.terminate();worker=null};
  return current;
 }
-function candidates(origin,destination,variant){const key=variant+'|'+origin+'→'+destination;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;const current=ensureWorker();if(!current)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b}),requestId=++nextRequestId;const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p&&p.requestId===requestId){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer,requestId});try{current.postMessage({key,requestId,origin,destination,variant})}catch(error){clearTimeout(timer);pendingRoutes.delete(key);for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(error)}pendingRoutes.clear();current.terminate();worker=null;reject(error)}return promise}
+function candidates(origin,destination,variant){const base=variant+'|'+origin+'→'+destination,key=variant==='ants'?base+'|'+(++nextRequestId):base;if(candidateCache.has(key))return Promise.resolve(candidateCache.get(key));if(pendingRoutes.has(key))return pendingRoutes.get(key).promise;const current=ensureWorker();if(!current)return Promise.reject(new Error('Worker недоступен'));let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b}),requestId=++nextRequestId;const timer=setTimeout(()=>{const p=pendingRoutes.get(key);if(p&&p.requestId===requestId){pendingRoutes.delete(key);p.reject(new Error('тайм-аут расчёта маршрута'))}},15000);pendingRoutes.set(key,{promise,resolve,reject,timer,requestId});try{current.postMessage({key,requestId,origin,destination,variant})}catch(error){clearTimeout(timer);pendingRoutes.delete(key);for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(error)}pendingRoutes.clear();current.terminate();worker=null;reject(error)}return promise}
 
 const flights=elt('g',{class:'flights','data-lm-overlay':'', 'pointer-events':'none'});svg.insertBefore(flights,svg.querySelector('[data-lm-key="active-badges"]'));
 const active=new Map(), seen=new Set(), unknownSeen=new Set(), routeSequences=new Map(); let dead=false, raf;
-function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false,unknown=false}) {
+function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false,unknown=false,settings={}}) {
   if(!active.has(id)&&unknownSeen.has(id)&&endedAt!=null&&!unknown){seen.delete(id);unknownSeen.delete(id)}
   if(dead||active.has(id)||seen.has(id)||origin===destination||!locations.some(x=>x[0]===origin)||!locations.some(x=>x[0]===destination)) return;
-  seen.add(id); if(unknown)unknownSeen.add(id); if(seen.size>4096){const oldest=seen.values().next().value;seen.delete(oldest);unknownSeen.delete(oldest)} const key=origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
-  const f={id,origin,destination,startedAt,endedAt,failed,unknown,pending:true};active.set(id,f);onChange();
-  candidates(origin,destination,variant).then(options=>{if(dead||!active.has(id))return;
+  seen.add(id); if(unknown)unknownSeen.add(id); if(seen.size>4096){const oldest=seen.values().next().value;seen.delete(oldest);unknownSeen.delete(oldest)} const key=variant+'|'+origin+'→'+destination, sequence=routeSequences.get(key)||0;routeSequences.set(key,sequence+1);
+  const valid=(v,min,max,fallback)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max?v:fallback;
+  const f={id,origin,destination,startedAt,endedAt,failed,unknown,pending:true,outboundSeconds:valid(settings.outboundSeconds,1,3600,30),remainingPercent:valid(settings.remainingPercent,0,100,50),responseSeconds:valid(settings.responseSeconds,1,3600,60),maxSatellites:Math.floor(valid(settings.maxSatellites,0,10,10))};active.set(id,f);onChange();
+  candidates(origin,destination,variant).then(options=>{if(dead||active.get(id)!==f)return;
     const {d,lane}=options[sequence%options.length], g=elt('g',{class:'flight','data-flight':id,'data-origin':origin,'data-destination':destination,'data-lane':lane,'data-reused':sequence>=options.length?'true':'false'}), color='#f0c595', satelliteColor=color;
     const path=elt('path',{d,fill:'none',stroke:'none'}),returnPath=elt('path',{d,fill:'none',stroke:'none'}),dots=[2,1,0].map(k=>elt('circle',{class:'pulse-dot','data-tail':k,r:Math.round(3.8*(1-.27*k)*10)/10,fill:color,opacity:1-.36*k})),satellite=elt('circle',{class:'satellite',r:4,fill:satelliteColor,stroke:'#e1ac6e','stroke-width':1.5});
     const out=elt('g',{class:'outbound-trail'}),back=elt('g',{class:'response-trail'});
@@ -1077,32 +1313,33 @@ function launch({id,origin,destination,startedAt=Date.now(),endedAt,failed=false
     const outbound=Array.from({length:40},(_,i)=>segment(out,color,i)), response=Array.from({length:40},(_,i)=>segment(back,failed?'#e8654f':'#a8d9b5',i));
     g.append(path,returnPath,out,back,...dots,satellite);flights.append(g);
     Object.assign(f,{pending:false,g,path,returnPath,dots,satellite,outbound,response,slot:null,returning:false});onChange();
-  }).catch(error=>{if(dead)return;active.delete(id);seen.delete(id);onChange(error)});
+  }).catch(error=>{if(dead||active.get(id)!==f)return;active.delete(id);seen.delete(id);onChange(error)});
 }
 function end(id,endedAt=Date.now(),failed=false,unknown=false){const f=active.get(id);if(f&&(f.endedAt==null||(f.unknown&&!unknown))){f.endedAt=endedAt;f.failed=failed;f.unknown=unknown;if(unknown)unknownSeen.add(id);else unknownSeen.delete(id);if(f.returning)f.returning=false}}
 function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=wall-f.startedAt;
  const returnAt=f.endedAt==null?Infinity:Math.max(f.startedAt+800,f.endedAt);
  if(elapsed<0){f.g.style.display='none';continue}f.g.style.display='';
  if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
- if(wall>=returnAt+800+60000){f.g.remove();active.delete(id);changed=true;continue}
+ if(wall>=returnAt+800+f.responseSeconds*1000){f.g.remove();active.delete(id);changed=true;continue}
  // A late slot must not rewrite an already-visible route: that would teleport the dot.
  // Keep its original path and clock; the satellite appears on its assigned orbit after arrival.
- if(!f.returning&&f.slot===null){const {p,base,capacity}=orbitGeometry.get(f.destination),occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!=null).map(x=>x.slot));let slot=0;while(slot<capacity&&occupied.has(slot))slot++;if(slot<capacity){const selected=orbitRoute(f.path.getAttribute('d'),p,base+4.75*slot);if(selected){f.slot=slot;f.angle=selected.angle;if(!f.waiting){f.path.setAttribute('d',selected.d);for(const segment of f.outbound)segment.setAttribute('d',selected.d)}f.g.dataset.orbitSlot=slot}}else f.waiting=true}
+ if(!f.returning&&f.slot===null){const {p,base,capacity}=orbitGeometry.get(f.destination),occupied=new Set([...active.values()].filter(x=>x!==f&&x.destination===f.destination&&!x.returning&&x.slot!=null).map(x=>x.slot));let slot=0;while(slot<Math.min(capacity,f.maxSatellites)&&occupied.has(slot))slot++;if(slot<Math.min(capacity,f.maxSatellites)){const selected=orbitRoute(f.path.getAttribute('d'),p,base+4.75*slot);if(selected){f.slot=slot;f.angle=selected.angle;if(!f.waiting){f.path.setAttribute('d',selected.d);for(const segment of f.outbound)segment.setAttribute('d',selected.d)}f.g.dataset.orbitSlot=slot}}else f.waiting=true}
  const length=f.path.getTotalLength(), returnLength=f.returnPath.getTotalLength(), n=f.outbound.length, travelElapsed=wall-(f.travelStart??f.startedAt), outProgress=Math.max(0,Math.min(1,travelElapsed/800)), backProgress=Math.max(0,Math.min(1,(wall-returnAt)/800));
  // Each small interval is clipped on the original path: no straight-line shortcuts at bends.
  for(let i=0;i<n;i++){const lo=i/n,hi=(i+1)/n, outEnd=Math.min(hi,outProgress,1-backProgress), backStart=Math.max(lo,1-backProgress);
    const paint=(p,start,end,opacity,length)=>{p.setAttribute('stroke-dasharray',`${Math.max(0,(end-start)*length)} ${length+1}`);p.setAttribute('stroke-dashoffset',-start*length);p.setAttribute('opacity',end>start?opacity:0)};
    const outLit=f.startedAt+lo*800, backLit=returnAt+(1-hi)*800;
-   paint(f.outbound[i],lo,outEnd,Math.max(.5,1-Math.max(0,wall-outLit)/60000),length);
-   paint(f.response[i],backStart,hi,Math.max(0,1-Math.max(0,wall-backLit)/60000),returnLength);
+   paint(f.outbound[i],lo,outEnd,Math.max(f.remainingPercent/100,1-(1-f.remainingPercent/100)*Math.max(0,wall-outLit)/(f.outboundSeconds*1000)),length);
+   paint(f.response[i],backStart,hi,Math.max(0,1-Math.max(0,wall-backLit)/(f.responseSeconds*1000)),returnLength);
  }
  for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-returnAt:travelElapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&age<800+k*45?'':'none';const p=f.returning?f.returnPath.getPointAtLength(travel*returnLength):f.path.getPointAtLength(travel*length);dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
  f.satellite.style.display='none';
  if(!f.returning&&f.slot!==null&&travelElapsed>=800){const {p,base}=orbitGeometry.get(f.destination),radius=base+4.75*f.slot,angle=f.angle+(travelElapsed-800)/(850*(f.slot+1));f.satellite.style.display='';f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
 
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
+ function clear(){for(const f of active.values())f.g?.remove();active.clear();seen.clear();unknownSeen.clear();routeSequences.clear();onChange()}
  function destroy(){dead=true;cancelAnimationFrame(raf);if(worker)worker.terminate();for(const p of pendingRoutes.values()){clearTimeout(p.timer);p.reject(new Error('overlay disposed'))}pendingRoutes.clear();active.clear();flights.remove()}
- return {launch,end,destroy,setVariant,active,seen,flights};
+ return {launch,end,clear,destroy,setVariant,active,seen,flights};
 }
 return {create,stations,locations,position,obstacles};
 })();
@@ -1122,7 +1359,7 @@ engine=LotMapOverlay.create(svg,refresh,{variant:variant.value});svg.append(sele
 for(const [id,name] of locations){const p=position(id),hit=elt('circle',{cx:p.x,cy:p.y,r:id==='hermes'?35:25,class:'hit',tabindex:'0',role:'button','aria-label':name});const choose=()=>{if(phase===0||!from.value||to.value){from.value=id;to.value='';phase=1}else{to.value=id;phase=0}refresh()};hit.addEventListener('click',choose);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose()}});hits.append(hit)}
 for(const sel of [from,to])sel.addEventListener('change',()=>{phase=to.value?0:1;refresh()});
 document.querySelector('#swap').onclick=()=>{[from.value,to.value]=[to.value,from.value];phase=to.value?0:1;refresh()};
-document.querySelector('#reset').onclick=()=>{from.value='';to.value='';phase=0;routeError=null;engine.destroy();board.entries.length=0;board.counts={};board.faults={};engine=LotMapOverlay.create(svg,refresh,{variant:variant.value});svg.append(selection,hits);refresh()};
+document.querySelector('#reset').onclick=()=>{phase=to.value?0:1;routeError=null;engine.destroy();board.entries.length=0;board.counts={};board.faults={};engine=LotMapOverlay.create(svg,refresh,{variant:variant.value});svg.append(selection,hits);refresh()};
 variant.onchange=()=>{engine.setVariant(variant.value)};
 document.querySelector('#zones').onchange=e=>zones.setAttribute('display',e.target.checked?'':'none');
 send.onclick=()=>{if(send.disabled)return;routeError=null;const id=++serial,start=Date.now(),duration=2000+Math.random()*3000;const instance=engine, destination=to.value; if(destination!=='hermes'){board.entries.push({id,station:destination,startedAt:start,status:'run'});board.counts[destination]=(board.counts[destination]||0)+1} instance.launch({id,origin:from.value,destination,startedAt:start});setTimeout(()=>{const failed=Math.random()<.1, entry=board.entries.find(e=>e.id===id);if(entry){entry.endedAt=Date.now();entry.status=failed?'err':'ok'}instance.end(id,Date.now(),failed)},duration)};setInterval(()=>updateMap(host,LotMapOriginal.drawMap(board,Date.now(),setup)),250);refresh();

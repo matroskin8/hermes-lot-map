@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 const root = new URL('../', import.meta.url)
 const targets = ['desktop/plugin.js', 'debug/map-debug.html']
-const blocks = [['MAP RENDERER','desktop/map-renderer.js'], ['MAP RECONCILE','desktop/map-reconcile.js'], ['OVERLAY ENGINE','desktop/overlay-engine.js']]
+const blocks = [['MAP RENDERER','desktop/map-renderer.js'], ['MAP RECONCILE','desktop/map-reconcile.js'], ['ROUTE GENERATOR','desktop/route-generator.js'], ['OVERLAY ENGINE','desktop/overlay-engine.js']]
 let dirty = false
 for (const target of targets) {
   const path = new URL(target, root)
