@@ -122,6 +122,7 @@ def with_hooks(session):
     agents = {}
     models = []
     hooked_calls = set()
+    terminal_times = []
     with path.open(encoding="utf-8") as source:
         for index, line in enumerate(source):
             try:
@@ -169,6 +170,7 @@ def with_hooks(session):
                     session["state"] = "working"
             elif kind in ("Stop", "Interrupt", "SessionEnd"):
                 session["state"] = "idle"
+                terminal_times.append(stamp)
                 for pending in events:
                     if pending["status"] == "running":
                         pending.update(status="unknown", completed=stamp)
@@ -189,6 +191,15 @@ def with_hooks(session):
             stamp = datetime.datetime.fromisoformat(event["time"].replace("Z", "+00:00"))
             if stamp < first_time or (event.get("call_id") and event["call_id"] not in hooked_calls):
                 log_events.append(event)
+        terminals = [(stamp, datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")))
+                     for stamp in terminal_times]
+        for event in log_events:
+            if event["status"] != "running":
+                continue
+            started = datetime.datetime.fromisoformat(event["time"].replace("Z", "+00:00"))
+            completion = next((stamp for stamp, time in terminals if time >= started), None)
+            if completion:
+                event.update(status="unknown", completed=completion)
         merged = log_events + events
         merged.sort(key=lambda event: datetime.datetime.fromisoformat(event["time"].replace("Z", "+00:00")))
         for event in merged:

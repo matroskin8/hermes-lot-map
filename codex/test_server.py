@@ -88,6 +88,31 @@ class CodexEventTest(unittest.TestCase):
             self.assertEqual([(event["label"], event["station"]) for event in result["events"]],
                              [("exec", "shell"), ("web_search", "web")])
 
+    def test_stop_closes_unhooked_calls_from_its_cycle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            session_id = "session-stop"
+            log = root / "session.jsonl"
+            rows = [
+                ("2026-01-01T00:00:00Z", "session_meta", {"id": session_id}),
+                ("2026-01-01T00:00:02Z", "response_item", {"type": "function_call", "name": "exec", "call_id": "before"}),
+                ("2026-01-01T00:00:05Z", "response_item", {"type": "function_call", "name": "web_search", "call_id": "after"}),
+            ]
+            log.write_text("\n".join(json.dumps({"timestamp": time, "type": outer, "payload": payload})
+                                     for time, outer, payload in rows) + "\n")
+            hooks = root / f"{session_id}.jsonl"
+            hook_rows = [
+                {"time": "2026-01-01T00:00:01Z", "event": "SessionStart"},
+                {"time": "2026-01-01T00:00:04Z", "event": "Stop"},
+            ]
+            hooks.write_text("\n".join(json.dumps(row) for row in hook_rows) + "\n")
+            with patch.object(server, "HOOKS", root):
+                result = server.parse_session(log)
+            calls = {event["label"]: event for event in result["events"] if event["label"] in ("exec", "web_search")}
+            self.assertEqual(calls["exec"]["status"], "unknown")
+            self.assertEqual(calls["exec"]["completed"], "2026-01-01T00:00:04Z")
+            self.assertEqual(calls["web_search"]["status"], "running")
+
 
 if __name__ == "__main__":
     unittest.main()

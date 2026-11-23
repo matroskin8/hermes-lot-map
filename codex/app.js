@@ -11,6 +11,7 @@
   let overlay = null
   let lastSession = ''
   let routeError = false
+  let initialized = false
 
   function boardOf(session) {
     const entries = []
@@ -71,11 +72,16 @@
     if (overlay) {
       for (const event of board.entries) {
         if (event.status !== 'run' && now - (event.endedAt || event.startedAt) > 62000) continue
+        const flight = overlay.active.get(event.id)
+        const newlyCompleted = event.status !== 'run' &&
+          ((flight && flight.endedAt == null) || (initialized && !overlay.seen.has(event.id)))
+        const visualEnd = newlyCompleted ? now : event.endedAt
         overlay.launch({ id: event.id, origin: event.from === 'inbound' ? 'you' : 'hermes', destination: event.from === 'inbound' ? 'hermes' : event.station, startedAt: event.startedAt,
-          endedAt: event.endedAt, failed: event.status === 'err', unknown: event.status === 'unknown' })
-        if (event.endedAt) overlay.end(event.id, event.endedAt, event.status === 'err', event.status === 'unknown')
+          endedAt: visualEnd, failed: event.status === 'err', unknown: event.status === 'unknown' })
+        if (visualEnd) overlay.end(event.id, visualEnd, event.status === 'err', event.status === 'unknown')
       }
     }
+    initialized = true
     renderFeed(board)
   }
 
@@ -106,6 +112,7 @@
         map.replaceChildren()
         lastSession = chosen.id
         routeError = false
+        initialized = false
       }
       current = chosen
       state.textContent = routeError ? 'Route calculation failed' : chosen.state === 'working' ? 'Working' : 'Idle'
