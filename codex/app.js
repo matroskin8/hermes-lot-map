@@ -93,15 +93,21 @@
       const data = await response.json()
       const chosen = data.session
       const previous = select.value
-      select.replaceChildren()
-      for (const session of data.sessions) {
-        const option = document.createElement('option')
-        option.value = session.id
-        option.textContent = session.name.length > 80 ? `${session.name.slice(0, 79)}…` : session.name
-        option.title = session.name
-        select.append(option)
+      const changed = data.sessions.length !== select.options.length || data.sessions.some((session, index) => {
+        const option = select.options[index]
+        return option.value !== session.id || option.title !== session.name
+      })
+      if (changed && document.activeElement !== select) {
+        select.replaceChildren()
+        for (const session of data.sessions) {
+          const option = document.createElement('option')
+          option.value = session.id
+          option.textContent = session.name.length > 80 ? `${session.name.slice(0, 79)}…` : session.name
+          option.title = session.name
+          select.append(option)
+        }
       }
-      select.value = chosen?.id || previous
+      if (document.activeElement !== select) select.value = chosen?.id || previous
       if (!chosen) { state.textContent = id ? 'Session not found' : 'No Codex sessions'; current = null; return }
       if (!id) {
         params.set('session', chosen.id)

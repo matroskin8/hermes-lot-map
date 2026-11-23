@@ -40,6 +40,8 @@ async function load(events, name = 'project') {
   window.eval(script)
   await new Promise(resolve => setImmediate(resolve))
   return {
+    select: window.document.getElementById('session'),
+    setName: value => { name = value },
     sessionLabel: () => window.document.getElementById('session').selectedOptions[0].textContent,
     fullSessionTitle: () => window.document.getElementById('session').selectedOptions[0].title,
     ends,
@@ -75,4 +77,17 @@ assert.equal(longTitle.sessionLabel(), `${'A'.repeat(79)}…`)
 assert.equal(longTitle.fullSessionTitle(), 'A'.repeat(90))
 longTitle.close()
 
-console.log('PASS Codex completion starts return on observation without replaying history')
+const selector = await load([])
+const originalOption = selector.select.options[0]
+await selector.update([], 2000)
+assert.equal(selector.select.options[0], originalOption)
+selector.select.focus()
+selector.setName('Renamed chat')
+await selector.update([], 3000)
+assert.equal(selector.select.options[0], originalOption)
+selector.select.blur()
+await selector.update([], 4000)
+assert.equal(selector.sessionLabel(), 'Renamed chat')
+selector.close()
+
+console.log('PASS Codex return timing and stable session selector during refresh')
