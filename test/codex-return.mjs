@@ -40,6 +40,7 @@ async function load(events) {
   window.eval(script)
   await new Promise(resolve => setImmediate(resolve))
   return {
+    sessionLabel: () => window.document.getElementById('session').selectedOptions[0].textContent,
     ends,
     active,
     async update(nextEvents, time) {
@@ -56,6 +57,7 @@ const running = { id: 'call', station: 'shell', label: 'exec', status: 'running'
 const completed = { ...running, status: 'done', completed: '1970-01-01T00:00:02.000Z' }
 
 const live = await load([running])
+assert.equal(live.sessionLabel(), 'project')
 await live.update([completed], 3000)
 assert.equal(live.active.get('call').endedAt, 3000)
 assert.deepEqual(live.ends, [{ id: 'call', endedAt: 3000 }])

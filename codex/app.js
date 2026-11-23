@@ -97,7 +97,7 @@
       for (const session of data.sessions) {
         const option = document.createElement('option')
         option.value = session.id
-        option.textContent = `${session.name} · ${session.id.slice(0, 8)}`
+        option.textContent = session.name
         select.append(option)
       }
       select.value = chosen?.id || previous

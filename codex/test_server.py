@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,21 @@ import server
 
 
 class CodexEventTest(unittest.TestCase):
+    def test_session_titles_use_display_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state.sqlite"
+            with sqlite3.connect(state) as database:
+                database.execute("CREATE TABLE threads (id TEXT, title TEXT, name TEXT)")
+                database.executemany("INSERT INTO threads VALUES (?, ?, ?)", [
+                    ("named", "First user message", "My chat title"),
+                    ("untitled", "First user message", None),
+                ])
+            with patch.object(server, "STATE", state):
+                self.assertEqual(server.session_titles(["named", "untitled", "missing"]), {
+                    "named": "My chat title",
+                    "untitled": "First user message",
+                })
+
     def test_hooks_replace_overlapping_log_events_and_pair_calls(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

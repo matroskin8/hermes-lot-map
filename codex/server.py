@@ -5,6 +5,7 @@ import datetime
 import json
 import os
 import re
+import sqlite3
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CODEX_HOME = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
 SESSIONS = CODEX_HOME / "sessions"
 HOOKS = CODEX_HOME / "hermes-lot-map" / "events"
+STATE = CODEX_HOME / "state_5.sqlite"
 SESSION_ID = re.compile(r"[A-Za-z0-9_-]{1,160}\Z")
 STATIC = {
     "/": (ROOT / "codex" / "index.html", "text/html; charset=utf-8"),
@@ -46,6 +48,20 @@ def classify(name):
 
 def session_files():
     return sorted(SESSIONS.glob("*/*/*/*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:100]
+
+
+def session_titles(ids):
+    if not ids:
+        return {}
+    try:
+        with sqlite3.connect(f"{STATE.as_uri()}?mode=ro", uri=True) as database:
+            rows = database.execute(
+                f"SELECT id, COALESCE(NULLIF(name, ''), NULLIF(title, '')) FROM threads WHERE id IN ({','.join('?' for _ in ids)})",
+                ids,
+            )
+            return {session_id: title for session_id, title in rows if title}
+    except sqlite3.Error:
+        return {}
 
 
 def parse_session(path):
@@ -217,7 +233,7 @@ class Handler(SimpleHTTPRequestHandler):
         if url.path == "/api/state":
             wanted = parse_qs(url.query).get("session", [""])[0]
             files = session_files()
-            summaries = []
+            candidates = []
             selected = None
             seen = set()
             for path in files:
@@ -228,11 +244,14 @@ class Handler(SimpleHTTPRequestHandler):
                     if session_id in seen:
                         continue
                     seen.add(session_id)
-                    summaries.append(dict(id=session_id, name=Path(meta.get("cwd", "Unknown")).name))
+                    candidates.append((session_id, Path(meta.get("cwd", "Unknown")).name))
                     if session_id == wanted or (not wanted and selected is None):
                         selected = path
                 except (OSError, ValueError):
                     continue
+            titles = session_titles([session_id for session_id, _ in candidates])
+            summaries = [dict(id=session_id, name=titles.get(session_id, workspace))
+                         for session_id, workspace in candidates]
             return self.send_json(dict(sessions=summaries, session=parse_session(selected) if selected else None))
         asset = STATIC.get(url.path)
         if asset is None:
