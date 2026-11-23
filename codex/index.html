@@ -9,7 +9,10 @@
 <body>
   <header>
     <div class="title"><span class="signal">◉</span> LOT MAP <span class="muted">/ CODEX</span></div>
-    <select id="session" aria-label="Codex session"></select>
+    <details id="session-picker">
+      <summary id="session-current" aria-label="Codex session">Loading sessions…</summary>
+      <div id="session-list" class="session-list"></div>
+    </details>
   </header>
   <main>
     <div id="map" role="img" aria-label="Codex activity map"></div>

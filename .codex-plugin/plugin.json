@@ -1,6 +1,6 @@
 {
   "name": "hermes-lot-map",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "The Hermes Lot Map visualization for live Codex activity.",
   "skills": "./codex/skills/",
   "hooks": "./codex/hooks/hooks.json"

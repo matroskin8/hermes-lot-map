@@ -1,7 +1,9 @@
 (() => {
   const map = document.getElementById('map')
   const feed = document.getElementById('feed')
-  const select = document.getElementById('session')
+  const picker = document.getElementById('session-picker')
+  const currentLabel = document.getElementById('session-current')
+  const sessionList = document.getElementById('session-list')
   const state = document.getElementById('state')
   const source = document.getElementById('source')
   const params = new URLSearchParams(location.search)
@@ -92,22 +94,31 @@
       if (!response.ok) throw Error(`HTTP ${response.status}`)
       const data = await response.json()
       const chosen = data.session
-      const previous = select.value
-      const changed = data.sessions.length !== select.options.length || data.sessions.some((session, index) => {
-        const option = select.options[index]
-        return option.value !== session.id || option.title !== session.name
+      const buttons = sessionList.querySelectorAll('button')
+      const changed = data.sessions.length !== buttons.length || data.sessions.some((session, index) => {
+        const button = buttons[index]
+        return button.dataset.session !== session.id || button.title !== session.name
       })
-      if (changed && document.activeElement !== select) {
-        select.replaceChildren()
+      if (changed && !picker.open) {
+        sessionList.replaceChildren()
         for (const session of data.sessions) {
-          const option = document.createElement('option')
-          option.value = session.id
-          option.textContent = session.name.length > 80 ? `${session.name.slice(0, 79)}…` : session.name
-          option.title = session.name
-          select.append(option)
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.dataset.session = session.id
+          button.textContent = session.name.length > 80 ? `${session.name.slice(0, 79)}…` : session.name
+          button.setAttribute('aria-label', button.textContent)
+          button.title = session.name
+          sessionList.append(button)
         }
       }
-      if (document.activeElement !== select) select.value = chosen?.id || previous
+      if (!picker.open) {
+        const label = data.sessions.find(session => session.id === chosen?.id)?.name || 'No Codex sessions'
+        currentLabel.textContent = label.length > 80 ? `${label.slice(0, 79)}…` : label
+        currentLabel.title = label
+        for (const button of sessionList.querySelectorAll('button')) {
+          button.setAttribute('aria-current', String(button.dataset.session === chosen?.id))
+        }
+      }
       if (!chosen) { state.textContent = id ? 'Session not found' : 'No Codex sessions'; current = null; return }
       if (!id) {
         params.set('session', chosen.id)
@@ -130,10 +141,19 @@
     }
   }
 
-  select.addEventListener('change', () => {
-    params.set('session', select.value)
+  sessionList.addEventListener('click', event => {
+    const button = event.target.closest('button[data-session]')
+    if (!button) return
+    params.set('session', button.dataset.session)
     history.replaceState(null, '', `${location.pathname}?${params}`)
+    picker.open = false
     refresh()
+  })
+  document.addEventListener('click', event => {
+    if (!picker.contains(event.target)) picker.open = false
+  })
+  picker.addEventListener('keydown', event => {
+    if (event.key === 'Escape') picker.open = false
   })
   setInterval(refresh, 1000)
   setInterval(render, 250)

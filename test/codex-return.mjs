@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom'
 const script = readFileSync(new URL('../codex/app.js', import.meta.url), 'utf8')
 
 async function load(events, name = 'project') {
-  const dom = new JSDOM('<div id="map"></div><ol id="feed"></ol><select id="session"></select><div id="state"></div><div id="source"></div>',
+  const dom = new JSDOM('<div id="map"></div><ol id="feed"></ol><details id="session-picker"><summary id="session-current"></summary><div id="session-list"></div></details><div id="state"></div><div id="source"></div>',
     { url: 'http://localhost/?session=test', runScripts: 'outside-only' })
   const { window } = dom
   const ticks = new Map()
@@ -40,10 +40,11 @@ async function load(events, name = 'project') {
   window.eval(script)
   await new Promise(resolve => setImmediate(resolve))
   return {
-    select: window.document.getElementById('session'),
+    picker: window.document.getElementById('session-picker'),
+    list: window.document.getElementById('session-list'),
     setName: value => { name = value },
-    sessionLabel: () => window.document.getElementById('session').selectedOptions[0].textContent,
-    fullSessionTitle: () => window.document.getElementById('session').selectedOptions[0].title,
+    sessionLabel: () => window.document.getElementById('session-current').textContent,
+    fullSessionTitle: () => window.document.getElementById('session-current').title,
     ends,
     active,
     async update(nextEvents, time) {
@@ -78,14 +79,15 @@ assert.equal(longTitle.fullSessionTitle(), 'A'.repeat(90))
 longTitle.close()
 
 const selector = await load([])
-const originalOption = selector.select.options[0]
+const originalButton = selector.list.querySelector('button')
 await selector.update([], 2000)
-assert.equal(selector.select.options[0], originalOption)
-selector.select.focus()
+assert.equal(selector.list.querySelector('button'), originalButton)
+selector.picker.open = true
 selector.setName('Renamed chat')
 await selector.update([], 3000)
-assert.equal(selector.select.options[0], originalOption)
-selector.select.blur()
+assert.equal(selector.picker.open, true)
+assert.equal(selector.list.querySelector('button'), originalButton)
+selector.picker.open = false
 await selector.update([], 4000)
 assert.equal(selector.sessionLabel(), 'Renamed chat')
 selector.close()
