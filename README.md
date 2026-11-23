@@ -1,6 +1,6 @@
 # Hermes Lot Map
 
-A live activity map for Hermes Desktop, based on [Panoptes](https://github.com/huwhitememes/panoptes) and using the original renderer from [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
+A live activity map for Hermes Desktop and Codex, based on [Panoptes](https://github.com/huwhitememes/panoptes) and using the original renderer from [lot-map](https://github.com/alexeyw/lot-map). It shows a map beside the chat, with stations for tools, files, shell, web, browser, agents, memory, and user interaction.
 
 > **Experimental:** filtering is based on the window-level focused runtime and its owner; live Desktop event routing and isolation have not been verified. Ambiguous or missing identifiers are dropped.
 
@@ -40,6 +40,29 @@ The route sweep can take over a minute. The DOM tests use jsdom and stub browser
 A route calculation error is shown in the pane and playground; in the playground it persists through refresh and clears on retry or reset. Later map updates can retry. The pre-existing 15-second Worker request deadline remains unchanged. Reduced motion uses non-animated, periodically refreshed elapsed rings and static active markers.
 
 ## Requirements and installation
+
+### Codex
+
+Codex uses the same SVG renderer and animated routes as Hermes, with a separate local event adapter. Python 3.9+ is sufficient; the Codex pane has no npm or external service dependency. From a checkout, run:
+
+```sh
+python3 codex/start.py --session YOUR_CODEX_CHAT_ID
+```
+
+Open the returned `127.0.0.1` URL in a Codex browser pane or a normal browser. The session selector can switch chats. Without a session ID, the most recently modified local chat is selected. The service listens only on loopback and reads Codex's local session logs. It never sends prompts, tool arguments, or tool output to the browser.
+
+For lifecycle events with precise starts, completions, errors, and subagent activity, install the Codex plugin from this repository:
+
+```sh
+codex plugin marketplace add https://github.com/matroskin8/hermes-lot-map
+codex plugin add hermes-lot-map@hermes-lot-map
+```
+
+Restart Codex, then review and trust the **Hermes Lot Map** hooks in **Settings → Hooks**. Ask Codex to open the Hermes Lot Map pane or invoke `$hermes-lot-map`. The plugin records only event names, tool names, call IDs, agent IDs, model names, timestamps, and error flags in `$CODEX_HOME/hermes-lot-map/events/`. Existing chats continue using session logs until resumed with the plugin loaded. The service remains running until stopped. No Hermes backend is needed for Codex mode.
+
+Codex log formats can change. Hooks are advisory and may not cover every internal or batched call. The context percentage is an approximation from reported token usage. Pane opening is agent-mediated; Codex may queue the request without immediately showing the pane. The Codex adapter does not change the existing Hermes Desktop plugin.
+
+### Hermes Desktop
 
 The upstream plugin declares Hermes 0.21.7 or newer. Compatibility with all Desktop builds is not guaranteed.
 

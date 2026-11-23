@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hermes Lot Map · Codex</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div class="title"><span class="signal">◉</span> LOT MAP <span class="muted">/ CODEX</span></div>
+    <select id="session" aria-label="Codex session"></select>
+  </header>
+  <main>
+    <div id="map" role="img" aria-label="Codex activity map"></div>
+    <div class="status"><span id="state">Connecting…</span><span id="source"></span></div>
+    <div class="feed-title">ACTIVITY</div>
+    <ol id="feed" aria-label="Recent activity"></ol>
+  </main>
+  <script src="/desktop/map-renderer.js"></script>
+  <script src="/desktop/map-reconcile.js"></script>
+  <script src="/desktop/overlay-engine.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

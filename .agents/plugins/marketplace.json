@@ -1,0 +1,10 @@
+{
+  "name": "hermes-lot-map",
+  "interface": { "displayName": "Hermes Lot Map" },
+  "plugins": [{
+    "name": "hermes-lot-map",
+    "source": { "source": "local", "path": "./" },
+    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+    "category": "Productivity"
+  }]
+}

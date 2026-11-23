@@ -2,8 +2,9 @@
 // Stubs the two allowed import specifiers, fires gateway events at the real
 // register() wiring, and asserts board transitions + contributions.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
-const SRC = new URL('../desktop/plugin.js', import.meta.url).pathname
+const SRC = fileURLToPath(new URL('../desktop/plugin.js', import.meta.url))
 const src = readFileSync(SRC, 'utf8')
 
 const dataUrl = (code) => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
