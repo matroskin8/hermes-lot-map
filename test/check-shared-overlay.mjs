@@ -11,4 +11,4 @@ for (const [name,path] of [['ROUTE GENERATOR','route-generator.js'],['OVERLAY EN
     assert.equal(artifact.indexOf(start,a+start.length),-1,`${target}: duplicate ${name}`)
   }
 }
-console.log('PASS byte-identical route generator and overlay in plugin and playground')
+console.log('PASS plugin and playground embed shared route generator and overlay sources')

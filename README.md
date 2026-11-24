@@ -43,7 +43,7 @@ A route calculation error is shown in the pane and playground; in the playground
 
 ### Codex
 
-Codex uses the same SVG renderer and animated routes as Hermes, with a separate local event adapter. Python 3.9+ is sufficient; the Codex pane has no npm or external service dependency. From a checkout, run:
+Codex serves `desktop/map-renderer.js`, `desktop/route-generator.js`, and `desktop/overlay-engine.js` directly. The Desktop plugin bundles those same source files through `test/build-shared.mjs`; Codex has only a separate local event adapter, not a separate map engine. Python 3.9+ is sufficient; the Codex pane has no npm or external service dependency. From a checkout, run:
 
 ```sh
 python3 codex/start.py --session YOUR_CODEX_CHAT_ID
