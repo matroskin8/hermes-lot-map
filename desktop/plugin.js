@@ -439,7 +439,7 @@ function end(id,endedAt=Date.now(),failed=false,unknown=false){const f=active.ge
 function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=wall-f.startedAt;
  const returnAt=f.endedAt==null?Infinity:Math.max(f.startedAt+800,f.endedAt);
  if(elapsed<0){f.g.style.display='none';continue}f.g.style.display='';
- if(wall>=returnAt&&!f.returning){f.returning=true;const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5';f.satellite.setAttribute('fill',color);f.satellite.setAttribute('stroke',f.unknown?'#65707b':f.failed?'#9b3e37':'#50745e');for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
+ if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
  if(wall>=returnAt+800+f.responseSeconds*1000){f.g.remove();active.delete(id);changed=true;continue}
  // A late slot must not rewrite an already-visible route: that would teleport the dot.
  // Keep its original path and clock; the satellite appears on its assigned orbit after arrival.
@@ -454,8 +454,7 @@ function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(c
  }
  for(const dot of f.dots){const k=Number(dot.dataset.tail),age=f.returning?wall-returnAt:travelElapsed,progress=Math.max(0,Math.min(1,(age-k*45)/800)),travel=f.returning?1-progress:progress;dot.style.display=age>=k*45&&age<800+k*45?'':'none';const p=f.returning?f.returnPath.getPointAtLength(travel*returnLength):f.path.getPointAtLength(travel*length);dot.setAttribute('cx',p.x);dot.setAttribute('cy',p.y)}
  f.satellite.style.display='none';
- if(f.returning&&backProgress<1){const p=f.returnPath.getPointAtLength((1-backProgress)*returnLength);f.satellite.style.display='';f.satellite.setAttribute('cx',p.x);f.satellite.setAttribute('cy',p.y)}
- else if(!f.returning&&f.slot!==null&&travelElapsed>=800){const {p,base}=orbitGeometry.get(f.destination),radius=base+4.75*f.slot,angle=f.angle+(travelElapsed-800)/(850*(f.slot+1));f.satellite.style.display='';f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
+ if(!f.returning&&f.slot!==null&&travelElapsed>=800){const {p,base}=orbitGeometry.get(f.destination),radius=base+4.75*f.slot,angle=f.angle+(travelElapsed-800)/(850*(f.slot+1));f.satellite.style.display='';f.satellite.setAttribute('cx',p.x+radius*Math.cos(angle));f.satellite.setAttribute('cy',p.y+radius*Math.sin(angle))}}
 
  if(changed)onChange();raf=requestAnimationFrame(frame)}raf=requestAnimationFrame(frame);
  function clear(){for(const f of active.values())f.g?.remove();active.clear();seen.clear();unknownSeen.clear();routeSequences.clear();usedCandidates.clear();onChange()}

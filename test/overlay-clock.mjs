@@ -51,8 +51,7 @@ tick(115000);assert.ok(Math.abs(num(a.outbound[0],'opacity')-.75)<1e-9)
 tick(130000);assert.equal(num(a.outbound[0],'opacity'),.5)
 engine.end('a',130000,false);tick(130000);assert.equal(a.g.dataset.outcome,'success');assert.equal(a.response[0].getAttribute('stroke'),'#a8d9b5')
 tick(130400);assert.equal(num(a.response[0],'opacity'),0);assert.ok(num(a.response[39],'opacity')>.99);assert.equal(num(a.outbound[39],'opacity'),0);assert.ok(num(a.outbound[0],'opacity')>0)
-assert.equal(a.satellite.style.display,'');assert.equal(num(a.satellite,'cx'),50)
-tick(130800);assert.ok(num(a.response[0],'opacity')>.99);assert.equal(num(a.outbound[0],'opacity'),0);assert.equal(a.satellite.style.display,'none')
+tick(130800);assert.ok(num(a.response[0],'opacity')>.99);assert.equal(num(a.outbound[0],'opacity'),0)
 // Opacity alone does not prove a segment can paint: validate its dash geometry.
 for(let i=0;i<40;i++) {
  const p=a.response[i], [dash,gap]=p.getAttribute('stroke-dasharray').split(' ').map(Number)
