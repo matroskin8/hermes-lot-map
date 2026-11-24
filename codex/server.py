@@ -208,6 +208,20 @@ def with_hooks(session):
             stamp = datetime.datetime.fromisoformat(event["time"].replace("Z", "+00:00"))
             if stamp < first_time or (event.get("call_id") and event["call_id"] not in hooked_calls):
                 log_events.append(event)
+        # A hook can stop after PreToolUse while the session log still records
+        # the completed call. Keep the log event in that case, not a stale flight.
+        for event in events[:]:
+            if event["status"] != "running" or not event["id"].startswith("call-"):
+                continue
+            started = datetime.datetime.fromisoformat(event["time"].replace("Z", "+00:00"))
+            match = next((logged for logged in session["events"]
+                          if logged["station"] == event["station"]
+                          and logged["status"] != "running"
+                          and abs((datetime.datetime.fromisoformat(logged["time"].replace("Z", "+00:00")) - started).total_seconds()) < 2), None)
+            if match:
+                events.remove(event)
+                if match not in log_events:
+                    log_events.append(match)
         terminals = [(stamp, datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")))
                      for stamp in terminal_times]
         for event in log_events:

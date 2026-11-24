@@ -132,6 +132,27 @@ class CodexEventTest(unittest.TestCase):
             self.assertEqual(calls["exec"]["completed"], "2026-01-01T00:00:04Z")
             self.assertEqual(calls["web_search"]["status"], "running")
 
+    def test_completed_log_call_replaces_orphaned_hook(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            session_id = "session-orphan"
+            log = root / "session.jsonl"
+            rows = [
+                ("2026-01-01T00:00:00Z", "session_meta", {"id": session_id}),
+                ("2026-01-01T00:00:02Z", "response_item", {"type": "custom_tool_call", "name": "exec", "call_id": "log-call"}),
+                ("2026-01-01T00:00:06Z", "response_item", {"type": "custom_tool_call_output", "call_id": "log-call", "output": "ok"}),
+            ]
+            log.write_text("\n".join(json.dumps({"timestamp": time, "type": outer, "payload": payload})
+                                     for time, outer, payload in rows) + "\n")
+            hooks = root / f"{session_id}.jsonl"
+            for hook_id in ("hook-call", "log-call"):
+                hooks.write_text(json.dumps({"time": "2026-01-01T00:00:02.2Z", "event": "PreToolUse",
+                                             "tool": "Bash", "call_id": hook_id}) + "\n")
+                with self.subTest(hook_id=hook_id), patch.object(server, "HOOKS", root):
+                    result = server.parse_session(log)
+                    self.assertEqual([(event["id"], event["status"]) for event in result["events"]],
+                                     [("call-log-call", "done")])
+
 
 if __name__ == "__main__":
     unittest.main()
