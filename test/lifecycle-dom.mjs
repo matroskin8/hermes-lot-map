@@ -129,7 +129,7 @@ time += 800
 await React.act(async () => { await new Promise(r => setTimeout(r,25)) })
 assert.equal(overlayFlight.dataset.outcome, 'success')
 assert.equal(overlayFlight.querySelector('.satellite'), null)
-assert.equal(overlayFlight.querySelector('.pulse-dot').getAttribute('fill'), '#a8d9b5')
+assert.equal(overlayFlight.querySelector('.pulse-dot').getAttribute('fill'), '#2f8b60')
 // Exercise the actual React adapter across reconciliations and the entire fade.
 const replyAt = time
 const response = overlayFlight.querySelectorAll('.response-trail path')
@@ -154,7 +154,7 @@ await React.act(() => fire('tool.complete', {tool_id:'delegation',name:'delegate
 await React.act(async () => { await new Promise(r => setTimeout(r,25)) })
 const errorFlight = svg.querySelector(`[data-flight="${delegate.id}"]`)
 assert.equal(errorFlight.dataset.outcome, 'error')
-assert.equal(errorFlight.querySelector('.pulse-dot').getAttribute('fill'), '#e8654f')
+assert.equal(errorFlight.querySelector('.pulse-dot').getAttribute('fill'), '#c44e3e')
 assert.equal(svg.querySelector(`[data-lm-key="return-${toolEntry.id}"]`), null)
 entry = mod.__test.board.get().entries.filter(e => e.kind === 'model').at(-1)
 time += 100

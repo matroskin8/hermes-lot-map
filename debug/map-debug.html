@@ -1320,7 +1320,7 @@ function end(id,endedAt=Date.now(),failed=false,unknown=false){const f=active.ge
 function frame(now){if(dead)return;const wall=Date.now();let changed=false;for(const [id,f] of active){if(f.pending)continue;const elapsed=wall-f.startedAt;
  const returnAt=f.endedAt==null?Infinity:Math.max(f.startedAt+800,f.endedAt);
  if(elapsed<0){f.g.style.display='none';continue}f.g.style.display='';
- if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots){const k=Number(dot.dataset.tail);dot.setAttribute('fill',color);dot.setAttribute('r',Math.round(2.6*(1-.27*k)*10)/10)}f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
+ if(wall>=returnAt&&!f.returning){f.returning=true;f.satellite.remove();const color=f.unknown?'#9ba1ab':f.failed?'#e8654f':'#a8d9b5',dotColor=f.unknown?'#5d6670':f.failed?'#c44e3e':'#2f8b60';for(const p of f.response)p.setAttribute('stroke',color);for(const dot of f.dots)dot.setAttribute('fill',dotColor);f.g.dataset.outcome=f.unknown?'unknown':f.failed?'error':'success';changed=true}
  if(wall>=returnAt+800+f.responseSeconds*1000){f.g.remove();active.delete(id);changed=true;continue}
  // A late slot must not rewrite an already-visible route: that would teleport the dot.
  // Keep its original path and clock; the satellite appears on its assigned orbit after arrival.

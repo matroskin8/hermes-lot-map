@@ -37,9 +37,10 @@ for(const [destination] of sandbox.engine.locations) {
 }
 tick(100800)
 for(const [destination] of sandbox.engine.locations) for(const failed of [false,true]) {
- const f=engine.active.get(`color-${destination}-${failed}`),color=failed?'#e8654f':'#a8d9b5'
+ const f=engine.active.get(`color-${destination}-${failed}`),color=failed?'#c44e3e':'#2f8b60'
  assert.ok(f.dots.every(dot=>dot.getAttribute('fill')===color),`${destination}: return dots`)
- assert.ok(f.response.every(segment=>segment.getAttribute('stroke')===color),`${destination}: return trail`)
+ assert.ok(f.dots.every(dot=>dot.getAttribute('r')===String(Math.round(3.8*(1-.27*Number(dot.dataset.tail))*10)/10)),`${destination}: return dot shape`)
+ assert.ok(f.response.every(segment=>segment.getAttribute('stroke')===(failed?'#e8654f':'#a8d9b5')),`${destination}: return trail`)
 }
 for(const [id,f] of engine.active) { f.g.remove(); engine.active.delete(id) }
 engine.launch({id:'a',origin:'hermes',destination:'memory',startedAt:100000});engine.launch({id:'b',origin:'hermes',destination:'shell',startedAt:100000});await new Promise(r=>setImmediate(r))
@@ -51,7 +52,8 @@ tick(115000);assert.ok(Math.abs(num(a.outbound[0],'opacity')-.75)<1e-9)
 tick(130000);assert.equal(num(a.outbound[0],'opacity'),.5)
 engine.end('a',130000,false);tick(130000);assert.equal(a.g.dataset.outcome,'success');assert.equal(a.response[0].getAttribute('stroke'),'#a8d9b5')
 tick(130400);assert.equal(num(a.response[0],'opacity'),0);assert.ok(num(a.response[39],'opacity')>.99);assert.equal(num(a.outbound[39],'opacity'),0);assert.ok(num(a.outbound[0],'opacity')>0)
-tick(130800);assert.ok(num(a.response[0],'opacity')>.99);assert.equal(num(a.outbound[0],'opacity'),0)
+assert.equal(a.dots[2].style.display,'');assert.ok(num(a.dots[2],'cx')>=49)
+tick(130800);assert.ok(num(a.response[0],'opacity')>.99);assert.equal(num(a.outbound[0],'opacity'),0);assert.ok(num(a.dots[2],'cx')<2)
 // Opacity alone does not prove a segment can paint: validate its dash geometry.
 for(let i=0;i<40;i++) {
  const p=a.response[i], [dash,gap]=p.getAttribute('stroke-dasharray').split(' ').map(Number)
