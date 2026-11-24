@@ -22,7 +22,7 @@ STATIC = {
     "/style.css": (ROOT / "codex" / "style.css", "text/css; charset=utf-8"),
     **{
         f"/desktop/{name}": (ROOT / "desktop" / name, "text/javascript; charset=utf-8")
-        for name in ("map-renderer.js", "map-reconcile.js", "overlay-engine.js")
+        for name in ("map-renderer.js", "map-reconcile.js", "route-generator.js", "overlay-engine.js")
     },
 }
 
@@ -103,7 +103,7 @@ def parse_session(path):
             if kind in ("function_call", "custom_tool_call"):
                 name = ".".join(filter(None, (payload.get("namespace"), payload.get("name")))) or "tool"
                 call_id = payload.get("call_id") or payload.get("id") or str(index)
-                event = dict(id=f"log-{index}", call_id=call_id, station=classify(name), label=name[:160], status="running", time=stamp)
+                event = dict(id=f"call-{call_id}", call_id=call_id, station=classify(name), label=name[:160], status="running", time=stamp)
                 calls[call_id] = event
                 events.append(event)
             elif kind in ("function_call_output", "custom_tool_call_output"):
@@ -149,7 +149,8 @@ def with_hooks(session):
             kind = row.get("event")
             tool = row.get("tool") or "Tool"
             key = row.get("call_id")
-            event = dict(id=f"hook-{index}", station=classify(tool), label=tool, status="done", time=stamp)
+            event = dict(id=f"call-{key}" if key and kind in ("PreToolUse", "PostToolUse") else f"hook-{index}",
+                         station=classify(tool), label=tool, status="done", time=stamp)
             if kind == "PreToolUse":
                 event["status"] = "running"
                 if key:

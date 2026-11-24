@@ -6,8 +6,35 @@
   const sessionList = document.getElementById('session-list')
   const state = document.getElementById('state')
   const source = document.getElementById('source')
+  const settingsPanel = document.getElementById('map-settings')
   const params = new URLSearchParams(location.search)
   const stations = new Set(['you', 'model', 'memory', 'files', 'shell', 'web', 'browser', 'agents', 'skills', 'hooks'])
+  const settingsKey = 'hermes-lot-map-codex-settings'
+  const ranges = { outboundSeconds: [1, 3600], remainingPercent: [0, 100], responseSeconds: [1, 3600], maxSatellites: [0, 10] }
+  const settings = { variant: 'production', outboundSeconds: 30, remainingPercent: 50, responseSeconds: 60, maxSatellites: 10 }
+  const saved = JSON.parse(localStorage.getItem(settingsKey) || '{}')
+  const variantControl = settingsPanel.querySelector('[name="variant"]')
+  if ([...variantControl.options].some(option => option.value === saved.variant)) settings.variant = saved.variant
+  for (const [name, [min, max]] of Object.entries(ranges)) {
+    if (typeof saved[name] === 'number' && Number.isFinite(saved[name]) && saved[name] >= min && saved[name] <= max) settings[name] = saved[name]
+  }
+  for (const control of settingsPanel.querySelectorAll('[name]')) control.value = settings[control.name]
+  settingsPanel.addEventListener('change', event => {
+    const control = event.target
+    if (control.name === 'variant') {
+      settings.variant = control.value
+      overlay?.setVariant(settings.variant)
+    } else if (control.name in ranges) {
+      const value = Number(control.value)
+      const [min, max] = ranges[control.name]
+      if (control.value === '' || !Number.isFinite(value) || value < min || value > max || (control.name === 'maxSatellites' && !Number.isInteger(value))) {
+        control.value = settings[control.name]
+        return
+      }
+      settings[control.name] = value
+    } else return
+    localStorage.setItem(settingsKey, JSON.stringify(settings))
+  })
   const setup = LotMapSetup.setupFrom({ coreName: 'CODEX', motion: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full' })
   let current = null
   let overlay = null
@@ -55,7 +82,13 @@
       age.className = 'age'
       const duration = (event.endedAt || Date.now()) - event.startedAt
       age.textContent = duration < 1000 ? `${Math.max(0, Math.round(duration))}ms` : `${Math.max(0, duration / 1000).toFixed(1)}s`
-      item.append(glyph, label, age)
+      const timing = document.createElement('span')
+      timing.className = 'timing'
+      const started = document.createElement('time')
+      started.dateTime = new Date(event.startedAt).toISOString()
+      started.textContent = new Date(event.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      timing.append(started, age)
+      item.append(glyph, label, timing)
       feed.append(item)
     }
   }
@@ -69,9 +102,13 @@
     if (!overlay && setup.motion !== 'reduced') {
       overlay = LotMapOverlay.create(map.firstElementChild, error => {
         if (error && !routeError) { routeError = true; state.textContent = 'Route calculation failed' }
-      })
+      }, { variant: settings.variant })
     }
     if (overlay) {
+      const present = new Set(board.entries.map(event => event.id))
+      for (const [id, flight] of overlay.active) {
+        if (flight.endedAt == null && !present.has(id)) overlay.end(id, now, false, true)
+      }
       for (const event of board.entries) {
         if (event.status !== 'run' && now - (event.endedAt || event.startedAt) > 62000) continue
         const flight = overlay.active.get(event.id)
@@ -79,7 +116,7 @@
           ((flight && flight.endedAt == null) || (initialized && !overlay.seen.has(event.id)))
         const visualEnd = newlyCompleted ? now : event.endedAt
         overlay.launch({ id: event.id, origin: event.from === 'inbound' ? 'you' : 'hermes', destination: event.from === 'inbound' ? 'hermes' : event.station, startedAt: event.startedAt,
-          endedAt: visualEnd, failed: event.status === 'err', unknown: event.status === 'unknown' })
+          endedAt: visualEnd, failed: event.status === 'err', unknown: event.status === 'unknown', settings })
         if (visualEnd) overlay.end(event.id, visualEnd, event.status === 'err', event.status === 'unknown')
       }
     }

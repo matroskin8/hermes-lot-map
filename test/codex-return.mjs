@@ -3,15 +3,17 @@ import { readFileSync } from 'node:fs'
 import { JSDOM } from 'jsdom'
 
 const script = readFileSync(new URL('../codex/app.js', import.meta.url), 'utf8')
+const html = readFileSync(new URL('../codex/index.html', import.meta.url), 'utf8')
 
 async function load(events, name = 'project') {
-  const dom = new JSDOM('<div id="map"></div><ol id="feed"></ol><details id="session-picker"><summary id="session-current"></summary><div id="session-list"></div></details><div id="state"></div><div id="source"></div>',
-    { url: 'http://localhost/?session=test', runScripts: 'outside-only' })
+  const dom = new JSDOM(html, { url: 'http://localhost/?session=test', runScripts: 'outside-only' })
   const { window } = dom
   const ticks = new Map()
   const active = new Map()
   const seen = new Set()
   const ends = []
+  const variants = []
+  const launches = []
   let now = 1000
   let currentEvents = events
   window.Date.now = () => now
@@ -24,10 +26,12 @@ async function load(events, name = 'project') {
   window.LotMapSetup = { setupFrom: () => ({ motion: 'full' }) }
   window.LotMapOriginal = { drawMap: () => '<svg></svg>' }
   window.updateMap = (host, markup) => { host.innerHTML = markup }
-  window.LotMapOverlay = { create: () => ({
+  window.LotMapOverlay = { create: (_svg, _onChange, options) => ({
     active, seen,
+    setVariant: value => variants.push(value),
     launch: flight => {
       if (active.has(flight.id) || seen.has(flight.id)) return
+      launches.push({ ...flight, variant: options.variant })
       active.set(flight.id, { endedAt: flight.endedAt })
       seen.add(flight.id)
     },
@@ -47,6 +51,10 @@ async function load(events, name = 'project') {
     fullSessionTitle: () => window.document.getElementById('session-current').title,
     ends,
     active,
+    variants,
+    launches,
+    settings: window.document.getElementById('map-settings'),
+    window,
     async update(nextEvents, time) {
       currentEvents = nextEvents
       now = time
@@ -62,6 +70,7 @@ const completed = { ...running, status: 'done', completed: '1970-01-01T00:00:02.
 
 const live = await load([running])
 assert.equal(live.sessionLabel(), 'project')
+assert.equal(live.window.document.querySelector('#feed time').dateTime, running.time)
 await live.update([completed], 3000)
 assert.equal(live.active.get('call').endedAt, 3000)
 assert.deepEqual(live.ends, [{ id: 'call', endedAt: 3000 }])
@@ -69,9 +78,37 @@ await live.update([completed], 4000)
 assert.equal(live.active.get('call').endedAt, 3000)
 live.close()
 
+const bridged = await load([{ ...running, id: 'call-shared', station: 'browser' }])
+await bridged.update([{ ...running, id: 'call-shared', station: 'browser' }], 1500)
+assert.equal(bridged.active.size, 1)
+await bridged.update([{ ...completed, id: 'call-shared', station: 'browser' }], 3000)
+assert.equal(bridged.active.size, 1)
+assert.deepEqual(bridged.ends, [{ id: 'call-shared', endedAt: 3000 }])
+bridged.close()
+
+const replaced = await load([{ ...running, id: 'log-call', station: 'browser' }])
+await replaced.update([{ ...completed, id: 'hook-call', station: 'browser' }], 3000)
+assert.equal(replaced.active.get('log-call').endedAt, 3000)
+assert.equal(replaced.active.get('hook-call').endedAt, 3000)
+assert.deepEqual(replaced.ends, [{ id: 'log-call', endedAt: 3000 }, { id: 'hook-call', endedAt: 3000 }])
+replaced.close()
+
 const historical = await load([completed])
 assert.equal(historical.active.get('call').endedAt, 2000)
 historical.close()
+
+const settings = await load([])
+const style = settings.settings.querySelector('[name="variant"]')
+style.value = 'moths'
+style.dispatchEvent(new settings.window.Event('change', { bubbles: true }))
+const opacity = settings.settings.querySelector('[name="remainingPercent"]')
+opacity.value = '65'
+opacity.dispatchEvent(new settings.window.Event('change', { bubbles: true }))
+await settings.update([running], 2000)
+assert.deepEqual(settings.variants, ['moths'])
+assert.equal(settings.launches[0].settings.remainingPercent, 65)
+assert.equal(JSON.parse(settings.window.localStorage.getItem('hermes-lot-map-codex-settings')).variant, 'moths')
+settings.close()
 
 const longTitle = await load([], 'A'.repeat(90))
 assert.equal(longTitle.sessionLabel(), `${'A'.repeat(79)}…`)

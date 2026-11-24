@@ -99,10 +99,13 @@ class CodexEventTest(unittest.TestCase):
             log.write_text("\n".join(json.dumps(row) for row in rows) + "\n")
             hooks = root / f"{session_id}.jsonl"
             hooks.write_text(json.dumps({"time": "2026-01-01T00:00:01+00:00", "event": "PreToolUse", "tool": "exec", "call_id": "covered"}) + "\n")
+            with patch.object(server, "HOOKS", root / "absent"):
+                log_event = next(event for event in server.parse_session(log)["events"] if event["label"] == "exec")
             with patch.object(server, "HOOKS", root):
                 result = server.parse_session(log)
             self.assertEqual([(event["label"], event["station"]) for event in result["events"]],
                              [("exec", "shell"), ("web_search", "web")])
+            self.assertEqual(log_event["id"], result["events"][0]["id"])
 
     def test_stop_closes_unhooked_calls_from_its_cycle(self):
         with tempfile.TemporaryDirectory() as directory:

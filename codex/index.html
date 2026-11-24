@@ -17,11 +17,29 @@
   <main>
     <div id="map" role="img" aria-label="Codex activity map"></div>
     <div class="status"><span id="state">Connecting…</span><span id="source"></span></div>
+    <details id="map-settings">
+      <summary>MAP SETTINGS</summary>
+      <div class="settings-fields">
+        <label>Route style <select name="variant">
+          <option value="production">Original</option><option value="moths">Moths</option>
+          <option value="lizards">Lizards</option><option value="streams">Streams</option>
+          <option value="swarm">Swarm</option><option value="ants">Ants</option>
+          <option value="lightning">Lightning</option><option value="shards">Shards</option>
+          <option value="switchback">Switchback</option><option value="fracture">Fracture</option>
+        </select></label>
+        <label>Outbound fade (s) <input name="outboundSeconds" type="number" min="1" max="3600" step="1"></label>
+        <label>Remaining opacity (%) <input name="remainingPercent" type="number" min="0" max="100" step="1"></label>
+        <label>Return fade (s) <input name="responseSeconds" type="number" min="1" max="3600" step="1"></label>
+        <label>Satellites per island <input name="maxSatellites" type="number" min="0" max="10" step="1"></label>
+      </div>
+      <p>Changes apply to new calls. Motion follows the system preference.</p>
+    </details>
     <div class="feed-title">ACTIVITY</div>
     <ol id="feed" aria-label="Recent activity"></ol>
   </main>
   <script src="/desktop/map-renderer.js"></script>
   <script src="/desktop/map-reconcile.js"></script>
+  <script src="/desktop/route-generator.js"></script>
   <script src="/desktop/overlay-engine.js"></script>
   <script src="/app.js"></script>
 </body>

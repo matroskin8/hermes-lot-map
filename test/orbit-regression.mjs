@@ -13,7 +13,7 @@ class Element {
 }
 let time=1000,callback,route
 const sandbox={document:{createElementNS:()=>new Element()},Date:{now:()=>time},Map,Set,Math,Float64Array,Int32Array,Uint8Array,Blob,URL:{createObjectURL:()=>'',revokeObjectURL(){}},Worker:class{postMessage({key,requestId}){queueMicrotask(()=>this.onmessage({data:{key,requestId,paths:[{d:route,lane:0}]}}))}terminate(){}},setTimeout,clearTimeout,requestAnimationFrame:f=>(callback=f,1),cancelAnimationFrame(){}}
-vm.createContext(sandbox);vm.runInContext(readFileSync(new URL('../desktop/overlay-engine.js',import.meta.url),'utf8').replace('return {create,stations,locations,position,obstacles};','return {create,stations,locations,position,obstacles,orbitRoute};')+';globalThis.engine=LotMapOverlay;globalThis.orbitRoute=LotMapOverlay.orbitRoute',sandbox)
+vm.createContext(sandbox);vm.runInContext((readFileSync(new URL('../desktop/route-generator.js',import.meta.url),'utf8')+'\n'+readFileSync(new URL('../desktop/overlay-engine.js',import.meta.url),'utf8')).replace('return {create,stations,locations,position,obstacles};','return {create,stations,locations,position,obstacles,orbitRoute};')+';globalThis.engine=LotMapOverlay;globalThis.orbitRoute=LotMapOverlay.orbitRoute',sandbox)
 const near=(a,b,eps=1e-7)=>assert.ok(Math.hypot(a.x-b.x,a.y-b.y)<eps,`${JSON.stringify(a)} != ${JSON.stringify(b)}`)
 // First intersection on a multi-segment path, not its later exit intersection.
 const crossing=sandbox.orbitRoute('M-20 0 L-12 0 L0 0 L20 0',{x:0,y:0},10)

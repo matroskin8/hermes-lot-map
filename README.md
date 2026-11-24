@@ -10,7 +10,7 @@ A live activity map for Hermes Desktop and Codex, based on [Panoptes](https://gi
 - Active tool calls orbit their station (static dots with reduced motion). Active identified calls and observed model intervals receive separate overlay satellites; each identified active child receives its own satellite and independently completes. Parent delegations and children may both appear because gateway events do not reliably identify their relationship; no correlation is invented. The ×N badge counts observed entries, not necessarily distinct underlying work.
 - Preview: animated overlay satellites use up to ten stable concentric slots per island, spaced 4.75 SVG units apart with radius 4 and stroke width 1.5; physical overlap between satellites is expected. The first orbit retains the original nearest-island-capped radius (normally 48 around Hermes and 30 around other islands). Outer orbits intentionally overlap other islands and may leave the viewport. Further active calls retain their trails and wait for the smallest free slot; they may finish before admission. If an expanded orbit already contains the route's starting point, its inbound path travels outward to contact the orbit; this can cross artwork.
 - Station counters and a central context-usage indicator when usage is available.
-- Activity feed with recent calls and durations.
+- Activity feed with individual retained observations, local start times, station, status and duration; running entries display elapsed whole seconds. It retains active entries and recent history rather than folding consecutive calls. Unlike original lot-map, it does not derive labels from tool arguments.
 - A Hermes Desktop side pane and a reduced-motion setting inherited from Panoptes.
 
 The plugin listens to Desktop gateway events; it does not modify tool execution. The SVG drawing is an adapted lot-map renderer, bundled from the vendored MIT source at commit `5c5833d7380976fda671975d32fcec9c1bc3ef79`; the event bridge and feed are Panoptes-derived, not a feature-complete port.
@@ -60,7 +60,7 @@ codex plugin add hermes-lot-map@hermes-lot-map
 
 Restart Codex, then review and trust the **Hermes Lot Map** hooks in **Settings → Hooks**. Ask Codex to open the Hermes Lot Map pane or invoke `$hermes-lot-map`. The plugin records only event names, tool names, call IDs, agent IDs, model names, timestamps, and error flags in `$CODEX_HOME/hermes-lot-map/events/`. Existing chats continue using session logs until resumed with the plugin loaded. The service remains running until stopped. No Hermes backend is needed for Codex mode.
 
-Codex log formats can change. Hooks are advisory and may not cover every internal or batched call. The context percentage is an approximation from reported token usage. Pane opening is agent-mediated; Codex may queue the request without immediately showing the pane. The Codex adapter does not change the existing Hermes Desktop plugin.
+Codex log formats can change. Hooks are advisory and may not cover every internal or batched call. The context percentage is an approximation from reported token usage. The pane's Map Settings section offers the same route styles, trail fades, and satellite limit as Desktop; choices are saved locally in the browser and apply to new calls. Motion follows the system preference. Pane opening is agent-mediated; Codex may queue the request without immediately showing the pane. The Codex event adapter is separate from Desktop; both modes share the renderer and overlay.
 
 ### Hermes Desktop
 
