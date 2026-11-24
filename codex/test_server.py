@@ -142,16 +142,21 @@ class CodexEventTest(unittest.TestCase):
                 ("2026-01-01T00:00:02Z", "response_item", {"type": "custom_tool_call", "name": "exec", "call_id": "log-call"}),
                 ("2026-01-01T00:00:06Z", "response_item", {"type": "custom_tool_call_output", "call_id": "log-call", "output": "ok"}),
             ]
-            log.write_text("\n".join(json.dumps({"timestamp": time, "type": outer, "payload": payload})
-                                     for time, outer, payload in rows) + "\n")
             hooks = root / f"{session_id}.jsonl"
             for hook_id in ("hook-call", "log-call"):
+                log.write_text("\n".join(json.dumps({"timestamp": time, "type": outer, "payload": payload})
+                                         for time, outer, payload in rows[:2]) + "\n")
                 hooks.write_text(json.dumps({"time": "2026-01-01T00:00:02.2Z", "event": "PreToolUse",
                                              "tool": "Bash", "call_id": hook_id}) + "\n")
                 with self.subTest(hook_id=hook_id), patch.object(server, "HOOKS", root):
+                    running = server.parse_session(log)
+                    self.assertEqual([(event["id"], event["status"]) for event in running["events"]],
+                                     [(f"call-{hook_id}", "running")])
+                    log.write_text("\n".join(json.dumps({"timestamp": time, "type": outer, "payload": payload})
+                                             for time, outer, payload in rows) + "\n")
                     result = server.parse_session(log)
                     self.assertEqual([(event["id"], event["status"]) for event in result["events"]],
-                                     [("call-log-call", "done")])
+                                     [(f"call-{hook_id}", "done")])
 
 
 if __name__ == "__main__":
