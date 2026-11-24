@@ -1,0 +1,198 @@
+(() => {
+  const map = document.getElementById('map')
+  const feed = document.getElementById('feed')
+  const picker = document.getElementById('session-picker')
+  const currentLabel = document.getElementById('session-current')
+  const sessionList = document.getElementById('session-list')
+  const state = document.getElementById('state')
+  const source = document.getElementById('source')
+  const settingsPanel = document.getElementById('map-settings')
+  const params = new URLSearchParams(location.search)
+  const stations = new Set(['you', 'model', 'memory', 'files', 'shell', 'web', 'browser', 'agents', 'skills', 'hooks'])
+  const settingsKey = 'hermes-lot-map-codex-settings'
+  const ranges = { outboundSeconds: [1, 3600], remainingPercent: [0, 100], responseSeconds: [1, 3600], maxSatellites: [0, 10] }
+  const settings = { variant: 'production', outboundSeconds: 30, remainingPercent: 50, responseSeconds: 60, maxSatellites: 10 }
+  const saved = JSON.parse(localStorage.getItem(settingsKey) || '{}')
+  const variantControl = settingsPanel.querySelector('[name="variant"]')
+  if ([...variantControl.options].some(option => option.value === saved.variant)) settings.variant = saved.variant
+  for (const [name, [min, max]] of Object.entries(ranges)) {
+    if (typeof saved[name] === 'number' && Number.isFinite(saved[name]) && saved[name] >= min && saved[name] <= max) settings[name] = saved[name]
+  }
+  for (const control of settingsPanel.querySelectorAll('[name]')) control.value = settings[control.name]
+  settingsPanel.addEventListener('change', event => {
+    const control = event.target
+    if (control.name === 'variant') {
+      settings.variant = control.value
+      overlay?.setVariant(settings.variant)
+    } else if (control.name in ranges) {
+      const value = Number(control.value)
+      const [min, max] = ranges[control.name]
+      if (control.value === '' || !Number.isFinite(value) || value < min || value > max || (control.name === 'maxSatellites' && !Number.isInteger(value))) {
+        control.value = settings[control.name]
+        return
+      }
+      settings[control.name] = value
+    } else return
+    localStorage.setItem(settingsKey, JSON.stringify(settings))
+  })
+  const setup = LotMapSetup.setupFrom({ coreName: 'CODEX', motion: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full' })
+  let current = null
+  let overlay = null
+  let lastSession = ''
+  let routeError = false
+  let initialized = false
+
+  function boardOf(session) {
+    const entries = []
+    const counts = {}
+    const faults = {}
+    const events = session.events || []
+    let lastAnswer = -1
+    for (const [index, event] of events.entries()) if (event.label === 'Answer ready') lastAnswer = index
+    for (const [index, event] of events.entries()) {
+      if (!stations.has(event.station)) continue
+      const startedAt = Date.parse(event.time)
+      if (!Number.isFinite(startedAt)) continue
+      const status = event.status === 'running' ? 'run' : event.status === 'error' ? 'err' : event.status === 'unknown' || event.status === 'interrupted' ? 'unknown' : 'ok'
+      const completed = event.completed ? Date.parse(event.completed) : NaN
+      const endedAt = Number.isFinite(completed) ? completed : status === 'run' ? undefined : startedAt
+      const from = event.station === 'you' && event.label === 'Message received' ? 'inbound' : 'core'
+      entries.push({ id: event.id, station: event.station, label: event.label, from, startedAt, endedAt, status, satellite: true })
+      if (event.station !== 'model') counts[event.station] = (counts[event.station] || 0) + 1
+      if (status === 'err' && index > lastAnswer) faults[event.station] = (faults[event.station] || 0) + 1
+    }
+    return { entries, counts, faults, model: session.model || undefined, context: session.context ?? undefined, overlayFlights: true }
+  }
+
+  function renderFeed(board) {
+    feed.replaceChildren()
+    for (const event of board.entries.slice(-14).reverse()) {
+      const item = document.createElement('li')
+      item.className = event.status
+      const glyph = document.createElement('span')
+      glyph.className = 'glyph'
+      glyph.textContent = { run: '●', err: '×', unknown: '?', ok: '·' }[event.status]
+      const label = document.createElement('span')
+      label.className = 'label'
+      const station = document.createElement('span')
+      station.className = 'station'
+      station.textContent = event.station
+      label.append(station, document.createTextNode(event.label))
+      const age = document.createElement('span')
+      age.className = 'age'
+      const duration = (event.endedAt || Date.now()) - event.startedAt
+      age.textContent = duration < 1000 ? `${Math.max(0, Math.round(duration))}ms` : `${Math.max(0, duration / 1000).toFixed(1)}s`
+      const timing = document.createElement('span')
+      timing.className = 'timing'
+      const started = document.createElement('time')
+      started.dateTime = new Date(event.startedAt).toISOString()
+      started.textContent = new Date(event.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      timing.append(started, age)
+      item.append(glyph, label, timing)
+      feed.append(item)
+    }
+  }
+
+  function render() {
+    if (!current) return
+    const board = boardOf(current)
+    const now = Date.now()
+    const svg = LotMapOriginal.drawMap(board, now, setup)
+    updateMap(map, svg)
+    if (!overlay && setup.motion !== 'reduced') {
+      overlay = LotMapOverlay.create(map.firstElementChild, error => {
+        if (error && !routeError) { routeError = true; state.textContent = 'Route calculation failed' }
+      }, { variant: settings.variant })
+    }
+    if (overlay) {
+      const present = new Set(board.entries.map(event => event.id))
+      for (const [id, flight] of overlay.active) {
+        if (flight.endedAt == null && !present.has(id)) overlay.end(id, now, false, true)
+      }
+      for (const event of board.entries) {
+        if (event.status !== 'run' && now - (event.endedAt || event.startedAt) > 62000) continue
+        const flight = overlay.active.get(event.id)
+        const newlyCompleted = event.status !== 'run' &&
+          ((flight && flight.endedAt == null) || (initialized && !overlay.seen.has(event.id)))
+        const visualEnd = newlyCompleted ? now : event.endedAt
+        overlay.launch({ id: event.id, origin: event.from === 'inbound' ? 'you' : 'hermes', destination: event.from === 'inbound' ? 'hermes' : event.station, startedAt: event.startedAt,
+          endedAt: visualEnd, failed: event.status === 'err', unknown: event.status === 'unknown', settings })
+        if (visualEnd) overlay.end(event.id, visualEnd, event.status === 'err', event.status === 'unknown')
+      }
+    }
+    initialized = true
+    renderFeed(board)
+  }
+
+  async function refresh() {
+    const id = params.get('session') || ''
+    try {
+      const response = await fetch(`/api/state?session=${encodeURIComponent(id)}`, { cache: 'no-store' })
+      if (!response.ok) throw Error(`HTTP ${response.status}`)
+      const data = await response.json()
+      const chosen = data.session
+      const buttons = sessionList.querySelectorAll('button')
+      const changed = data.sessions.length !== buttons.length || data.sessions.some((session, index) => {
+        const button = buttons[index]
+        return button.dataset.session !== session.id || button.title !== session.name
+      })
+      if (changed && !picker.open) {
+        sessionList.replaceChildren()
+        for (const session of data.sessions) {
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.dataset.session = session.id
+          button.textContent = session.name.length > 80 ? `${session.name.slice(0, 79)}…` : session.name
+          button.setAttribute('aria-label', button.textContent)
+          button.title = session.name
+          sessionList.append(button)
+        }
+      }
+      if (!picker.open) {
+        const label = data.sessions.find(session => session.id === chosen?.id)?.name || 'No Codex sessions'
+        currentLabel.textContent = label.length > 80 ? `${label.slice(0, 79)}…` : label
+        currentLabel.title = label
+        for (const button of sessionList.querySelectorAll('button')) {
+          button.setAttribute('aria-current', String(button.dataset.session === chosen?.id))
+        }
+      }
+      if (!chosen) { state.textContent = id ? 'Session not found' : 'No Codex sessions'; current = null; return }
+      if (!id) {
+        params.set('session', chosen.id)
+        history.replaceState(null, '', `${location.pathname}?${params}`)
+      }
+      if (lastSession !== chosen.id) {
+        overlay?.destroy()
+        overlay = null
+        map.replaceChildren()
+        lastSession = chosen.id
+        routeError = false
+        initialized = false
+      }
+      current = chosen
+      state.textContent = routeError ? 'Route calculation failed' : chosen.state === 'working' ? 'Working' : 'Idle'
+      source.textContent = chosen.source
+      render()
+    } catch (error) {
+      state.textContent = `Disconnected: ${error.message}`
+    }
+  }
+
+  sessionList.addEventListener('click', event => {
+    const button = event.target.closest('button[data-session]')
+    if (!button) return
+    params.set('session', button.dataset.session)
+    history.replaceState(null, '', `${location.pathname}?${params}`)
+    picker.open = false
+    refresh()
+  })
+  document.addEventListener('click', event => {
+    if (!picker.contains(event.target)) picker.open = false
+  })
+  picker.addEventListener('keydown', event => {
+    if (event.key === 'Escape') picker.open = false
+  })
+  setInterval(refresh, 1000)
+  setInterval(render, 250)
+  refresh()
+})()

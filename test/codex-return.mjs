@@ -1,0 +1,132 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { JSDOM } from 'jsdom'
+
+const script = readFileSync(new URL('../codex/app.js', import.meta.url), 'utf8')
+const html = readFileSync(new URL('../codex/index.html', import.meta.url), 'utf8')
+
+async function load(events, name = 'project') {
+  const dom = new JSDOM(html, { url: 'http://localhost/?session=test', runScripts: 'outside-only' })
+  const { window } = dom
+  const ticks = new Map()
+  const active = new Map()
+  const seen = new Set()
+  const ends = []
+  const variants = []
+  const launches = []
+  let now = 1000
+  let currentEvents = events
+  window.Date.now = () => now
+  window.matchMedia = () => ({ matches: false })
+  window.setInterval = (callback, delay) => { ticks.set(delay, callback); return delay }
+  window.fetch = async () => ({ ok: true, json: async () => ({
+    sessions: [{ id: 'test', name }],
+    session: { id: 'test', state: 'working', source: 'test', events: currentEvents },
+  }) })
+  window.LotMapSetup = { setupFrom: () => ({ motion: 'full' }) }
+  window.LotMapOriginal = { drawMap: () => '<svg></svg>' }
+  window.updateMap = (host, markup) => { host.innerHTML = markup }
+  window.LotMapOverlay = { create: (_svg, _onChange, options) => ({
+    active, seen,
+    setVariant: value => variants.push(value),
+    launch: flight => {
+      if (active.has(flight.id) || seen.has(flight.id)) return
+      launches.push({ ...flight, variant: options.variant })
+      active.set(flight.id, { endedAt: flight.endedAt })
+      seen.add(flight.id)
+    },
+    end: (id, endedAt) => {
+      ends.push({ id, endedAt })
+      const flight = active.get(id)
+      if (flight && flight.endedAt == null) flight.endedAt = endedAt
+    },
+  }) }
+  window.eval(script)
+  await new Promise(resolve => setImmediate(resolve))
+  return {
+    picker: window.document.getElementById('session-picker'),
+    list: window.document.getElementById('session-list'),
+    setName: value => { name = value },
+    sessionLabel: () => window.document.getElementById('session-current').textContent,
+    fullSessionTitle: () => window.document.getElementById('session-current').title,
+    ends,
+    active,
+    variants,
+    launches,
+    settings: window.document.getElementById('map-settings'),
+    window,
+    async update(nextEvents, time) {
+      currentEvents = nextEvents
+      now = time
+      ticks.get(1000)()
+      await new Promise(resolve => setImmediate(resolve))
+    },
+    close: () => window.close(),
+  }
+}
+
+const running = { id: 'call', station: 'shell', label: 'exec', status: 'running', time: '1970-01-01T00:00:00.000Z' }
+const completed = { ...running, status: 'done', completed: '1970-01-01T00:00:02.000Z' }
+
+const live = await load([running])
+assert.equal(live.sessionLabel(), 'project')
+assert.equal(live.window.document.querySelector('#feed time').dateTime, running.time)
+await live.update([completed], 3000)
+assert.equal(live.active.get('call').endedAt, 3000)
+assert.deepEqual(live.ends, [{ id: 'call', endedAt: 3000 }])
+await live.update([completed], 4000)
+assert.equal(live.active.get('call').endedAt, 3000)
+live.close()
+
+const bridged = await load([{ ...running, id: 'call-shared', station: 'browser' }])
+await bridged.update([{ ...running, id: 'call-shared', station: 'browser' }], 1500)
+assert.equal(bridged.active.size, 1)
+await bridged.update([{ ...completed, id: 'call-shared', station: 'browser' }], 3000)
+assert.equal(bridged.active.size, 1)
+assert.deepEqual(bridged.ends, [{ id: 'call-shared', endedAt: 3000 }])
+bridged.close()
+
+const replaced = await load([{ ...running, id: 'log-call', station: 'browser' }])
+await replaced.update([{ ...completed, id: 'hook-call', station: 'browser' }], 3000)
+assert.equal(replaced.active.get('log-call').endedAt, 3000)
+assert.equal(replaced.active.get('hook-call').endedAt, 3000)
+assert.deepEqual(replaced.ends, [{ id: 'log-call', endedAt: 3000 }, { id: 'hook-call', endedAt: 3000 }])
+replaced.close()
+
+const historical = await load([completed])
+assert.equal(historical.active.get('call').endedAt, 2000)
+historical.close()
+
+const settings = await load([])
+const style = settings.settings.querySelector('[name="variant"]')
+style.value = 'moths'
+style.dispatchEvent(new settings.window.Event('change', { bubbles: true }))
+const opacity = settings.settings.querySelector('[name="remainingPercent"]')
+opacity.value = '65'
+opacity.dispatchEvent(new settings.window.Event('change', { bubbles: true }))
+await settings.update([running], 2000)
+assert.deepEqual(settings.variants, ['moths'])
+assert.equal(settings.launches[0].settings.remainingPercent, 65)
+assert.equal(JSON.parse(settings.window.localStorage.getItem('hermes-lot-map-codex-settings')).variant, 'moths')
+settings.close()
+
+const longTitle = await load([], 'A'.repeat(90))
+assert.equal(longTitle.sessionLabel(), `${'A'.repeat(79)}…`)
+assert.equal(longTitle.fullSessionTitle(), 'A'.repeat(90))
+longTitle.close()
+
+const selector = await load([])
+const originalButton = selector.list.querySelector('button')
+await selector.update([], 2000)
+assert.equal(selector.list.querySelector('button'), originalButton)
+selector.picker.open = true
+selector.setName('Renamed chat')
+await selector.update([], 3000)
+assert.equal(selector.picker.open, true)
+assert.equal(selector.list.querySelector('button'), originalButton)
+selector.picker.open = false
+await selector.update([], 4000)
+assert.equal(selector.sessionLabel(), 'Renamed chat')
+selector.close()
+
+console.log('PASS Codex return timing and stable session selector during refresh')
